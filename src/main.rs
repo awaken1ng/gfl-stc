@@ -41,11 +41,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         match path.extension().unwrap().to_string_lossy().as_ref() {
             "stc" => {
                 log::info!("Parsing {}", path.display());
-                stc::to_csv(&path, &definitions)?;
+                if let Err(why) = stc::to_csv(&path, &definitions) {
+                    log::error!("Failed parsing {}: {}", path.display(), why)
+                }
             }
             "dat" => {
                 log::info!("Parsing {}", path.display());
-                catchdata::parse(&path)?;
+                if let Err(why) = catchdata::parse(&path) {
+                    log::error!("Failed parsing {}: {}", path.display(), why)
+                }
             }
             _ => continue,
         }
