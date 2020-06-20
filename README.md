@@ -23,20 +23,21 @@ After completing the download, the archive is placed at `<internal storage>/Andr
 ## Format overview
 ```
     +---+---+---+---+---+---+
-    |  id   |  ???  |  rows |
+    |  id   |  lbs  |  rows |
     +---+---+---+---+---+---+
     +---+===================+
     | f |    field types    |  
     +---+===================+
-+---+---+---+---+---+---+---+---+
-|      ???      |  rows offset  |
-+---+---+---+---+---+---+---+---+
-    +=====+=================+
-    | ??? |      data       |
-    +=====+=================+
+    +=======================+
+    |       jump table      |
+    +=======================+
+    +=======================+
+    |          data         |
+    +=======================+
 ```
 where:
 - `id` is a `u16` integer representing ID of this table, usually matches the file name, e.g. `5000.stc` will have ID of 5000
+- `lbs`, length of the last 65536 byte block, not counting `id` and itself
 - `rows` is a `u16` number of rows in this table
 - `f` is a `u8` number of fields in a row
 - `field types` is a sequence of `u8` integers with `f` items, each value represents field type in a row as follows:
@@ -53,11 +54,11 @@ where:
     - 11 => `string` with the structure as follows:
         ```
         +---+---+---+======+
-        |???|  len  | text |
+        | a |  len  |  str |
         +---+---+---+======|
         ```
-        where `text` is one byte sequence of characters with a length of `len`
-- `rows offset` is an offset to `data` from the start of the file
+        where `a` is `is_ascii` flag, `str` is ASCII or UTF-8 encoded
+- `jump table` is a sequence of two `u32` integers: `record_id` and absolute `offset`, at least one item is always present (of the first record) 
 - `data` is a sequence of `rows`, each row have `f` fields
 
 *※ Little-endian ordering is used*
