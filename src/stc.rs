@@ -113,7 +113,9 @@ where
                     let mut buffer = vec![0; usize::from(len)];
                     reader.read_exact(&mut buffer)?;
 
-                    String::from_utf8_lossy(&buffer).to_string()
+                    String::from_utf8_lossy(&buffer)
+                        .replace("\r", "\\r")
+                        .replace("\n", "\\n")
                 }
                 unknown => unimplemented!("type {}", unknown),
             };
