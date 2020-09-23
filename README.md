@@ -37,7 +37,7 @@ After completing the download, the archive is placed at `<internal storage>/Andr
 ```
 where:
 - `id` is a `u16` integer representing ID of this table, usually matches the file name, e.g. `5000.stc` will have ID of 5000
-- `lbs`, length of the last 65536 byte block, not counting `id` and itself
+- `lbs`, is a `u16` length of the last 65536 byte block, not counting `id` and itself
 - `rows` is a `u16` number of rows in this table
 - `f` is a `u8` number of fields in a row
 - `field types` is a sequence of `u8` integers with `f` items, each value represents field type in a row as follows:
