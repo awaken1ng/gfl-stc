@@ -20,14 +20,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // parse arguments
     let mut args = pico_args::Arguments::from_env();
-    let delete = args.contains("-del");
+    let delete = args.contains("--del");
     let definitions_path: Option<String> = args.opt_value_from_str("--def")?;
     let files = args.free()?;
     if files.is_empty() {
         log::info!("Usage: [files]");
         log::info!("Options:");
         log::info!("    --def    Path to table definitions");
-        log::info!("     -del    Delete input file after processing");
+        log::info!("    --del    Delete input file after processing");
         return Ok(());
     }
 
