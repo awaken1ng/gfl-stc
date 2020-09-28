@@ -13,7 +13,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     with open(args.headers) as headers, open(args.output, 'w') as out:
-        out = csv.writer(out, delimiter=',')
+        out = csv.writer(out, delimiter=';')
         out.writerow([args.region, args.version])
 
         # find table names from CmdDef enum
@@ -55,4 +55,5 @@ if __name__ == '__main__':
                     _field_type, field_name, = match.groups()
                     table['fields'].append(field_name)
 
-            out.writerow([table['id'], table['name']] + table['fields'])
+            fields = ','.join(table['fields'])
+            out.writerow([table['id'], table['name'], fields])
