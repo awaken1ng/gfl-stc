@@ -32,7 +32,7 @@ if __name__ == '__main__':
 
             if match := re.search(r'CmdDef stc(.+)List', line):
                 table_name, = match.groups()
-                tables.append({'id': 5000 + table_id, 'name': table_name, 'fields': []})
+                tables.append({'id': 5000 + table_id, 'name': table_name, 'fields': [], 'types': []})
                 table_id += 1
 
         # find field names
@@ -54,8 +54,36 @@ if __name__ == '__main__':
                     # skip lua hot patching related lines
                     continue
                 if match := re.search(r'.+ (.+) (.+);', line):
-                    _field_type, field_name, = match.groups()
+                    field_type, field_name, = match.groups()
+
+                    if field_type in ['sbyte', 'SByte']:
+                        field_type = 'i8'
+                    elif field_type in ['byte', 'Byte']:
+                        field_type = 'u8'
+                    elif field_type in ['short', 'Int16']:
+                        field_type = 'i16'
+                    elif field_type in ['ushort', 'UInt16']:
+                        field_type = 'u16'
+                    elif field_type in ['int', 'Int32']:
+                        field_type = 'i32'
+                    elif field_type in ['uint', 'UInt32']:
+                        field_type = 'u32'
+                    elif field_type in ['long', 'Int64']:
+                        field_type = 'i64'
+                    elif field_type in ['ulong', 'UInt64']:
+                        field_type = 'u64'
+                    elif field_type in ['float', 'Single']:
+                        field_type = 'f32'
+                    elif field_type in ['double', 'Double']:
+                        field_type = 'f64'
+                    elif field_type in ['string', 'String']:
+                        field_type = 'string'
+                    else:
+                        raise Exception(f'unrecognized type: {field_type}')
+
                     table['fields'].append(field_name)
+                    table['types'].append(field_type)
 
             fields = ','.join(table['fields'])
-            out.writerow([table['id'], table['name'], fields])
+            types = ','.join(table['types'])
+            out.writerow([table['id'], table['name'], fields, types])
