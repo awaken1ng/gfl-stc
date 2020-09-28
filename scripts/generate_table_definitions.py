@@ -25,13 +25,15 @@ if __name__ == '__main__':
 
         # read enum fields until we bump into closing bracket
         tables = []
+        table_id = 0
         while line := headers.readline().strip():
             if line == '}':
                 break
 
-            if match := re.search(r'CmdDef stc(.+)List = (\d+);', line):
-                table_name, table_id = match.groups()
-                tables.append({'id': int(table_id), 'name': table_name, 'fields': []})
+            if match := re.search(r'CmdDef stc(.+)List', line):
+                table_name, = match.groups()
+                tables.append({'id': 5000 + table_id, 'name': table_name, 'fields': []})
+                table_id += 1
 
         # find field names
         for table in tables:
