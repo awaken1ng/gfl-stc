@@ -10,6 +10,7 @@ if __name__ == '__main__':
     parser.add_argument('output')
     parser.add_argument('--region', action='store', default='UNKNOWN_REGION')
     parser.add_argument('--version', action='store', default='UNKNOWN_VERSION')
+    parser.add_argument('--shift', type=int, help='shift all further table IDs by 1 from specified table')
     args = parser.parse_args()
 
     with open(args.headers) as headers, open(args.output, 'w') as out:
@@ -32,6 +33,8 @@ if __name__ == '__main__':
 
             if match := re.search(r'CmdDef stc(.+)List', line):
                 table_name, = match.groups()
+                if table_id == args.shift:
+                    table_id += 1
                 tables.append({'id': 5000 + table_id, 'name': table_name, 'fields': [], 'types': []})
                 table_id += 1
 
