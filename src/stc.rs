@@ -72,6 +72,13 @@ where
 
     let mut writer = match definitions.get(&table_id) {
         Some(def) => {
+            let types: Vec<String> = field_types.iter().map(type_to_str).map(String::from).collect();
+            if types != def.types {
+                log::warn!("Field types in the file and in definitions are not matching");
+                log::warn!("table={:?}", types);
+                log::warn!("  def={:?}", def.types);
+            }
+
             log::debug!("Writing field names");
             let out_path = path
                 .as_ref()
