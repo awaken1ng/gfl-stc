@@ -29,6 +29,7 @@ where
     // split
     for line in data.lines() {
         let line = line?;
+        // starting from second line, there's 6 spaces padding at the start
         let line = line.trim();
 
         if line.is_empty() {
