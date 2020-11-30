@@ -1,143 +1,206 @@
 use byteorder::{LittleEndian, ReadBytesExt};
-use csv::StringRecord;
 
-use std::fs;
 use std::io::{self, BufReader, Read, Seek, SeekFrom};
-use std::path::Path;
 
-use crate::definitions::TableDefinitions;
+#[derive(Debug)]
+pub enum Value {
+    I8(i8),
+    U8(u8),
+    I16(i16),
+    U16(u16),
+    I32(i32),
+    U32(u32),
+    I64(i64),
+    U64(u64),
+    F32(f32),
+    F64(f64),
+    String(String),
+}
 
-fn type_to_str<'a>(t: &u8) -> &'a str {
-    match t {
-        1 => "i8",
-        2 => "u8",
-        3 => "i16",
-        4 => "u16",
-        5 => "i32",
-        6 => "u32",
-        7 => "i64",
-        8 => "u64",
-        9 => "f32",
-        10 => "f64",
-        11 => "string",
-        unknown => unimplemented!("{}", unknown),
+macro_rules! impl_as {
+    ($item:tt, $name:ident -> $type:ty) => {
+        pub fn $name(&self) -> Option<$type> {
+            match self {
+                Value::$item(v) => Some(*v),
+                _ => None,
+            }
+        }
+    };
+}
+
+impl Value {
+    pub fn read<R>(field_type: u8, reader: &mut R) -> io::Result<Value>
+    where
+        R: ReadBytesExt,
+    {
+        let value = match field_type {
+            1 => Value::I8(reader.read_i8()?),
+            2 => Value::U8(reader.read_u8()?),
+            3 => Value::I16(reader.read_i16::<LittleEndian>()?),
+            4 => Value::U16(reader.read_u16::<LittleEndian>()?),
+            5 => Value::I32(reader.read_i32::<LittleEndian>()?),
+            6 => Value::U32(reader.read_u32::<LittleEndian>()?),
+            7 => Value::I64(reader.read_i64::<LittleEndian>()?),
+            8 => Value::U64(reader.read_u64::<LittleEndian>()?),
+            9 => Value::F32(reader.read_f32::<LittleEndian>()?),
+            10 => Value::F64(reader.read_f64::<LittleEndian>()?),
+            11 => {
+                // UTF-8 is compatible with ASCII, so we can ignore this
+                // we could seek over it, but that would require io::Seek requirement on the reader
+                reader.read_u8()?; // step over `is_ascii` flag
+
+                let len = reader.read_u16::<LittleEndian>()?;
+                let mut buffer = vec![0; usize::from(len)];
+                reader.read_exact(&mut buffer)?;
+
+                let string = String::from_utf8_lossy(&buffer).to_string();
+                Value::String(string)
+            }
+            unknown => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("unknown value type {}", unknown),
+                ))
+            }
+        };
+
+        Ok(value)
+    }
+
+    pub fn type_as_u8(&self) -> u8 {
+        match self {
+            Value::I8(_) => 1,
+            Value::U8(_) => 2,
+            Value::I16(_) => 3,
+            Value::U16(_) => 4,
+            Value::I32(_) => 5,
+            Value::U32(_) => 6,
+            Value::I64(_) => 7,
+            Value::U64(_) => 8,
+            Value::F32(_) => 9,
+            Value::F64(_) => 10,
+            Value::String(_) => 11,
+        }
+    }
+    pub fn type_as_string(&self) -> String {
+        match self {
+            Value::I8(_) => "i8",
+            Value::U8(_) => "u8",
+            Value::I16(_) => "i16",
+            Value::U16(_) => "u16",
+            Value::I32(_) => "i32",
+            Value::U32(_) => "u32",
+            Value::I64(_) => "i64",
+            Value::U64(_) => "u64",
+            Value::F32(_) => "f32",
+            Value::F64(_) => "f64",
+            Value::String(_) => "string",
+        }
+        .to_string()
+    }
+    impl_as!(I8, as_i8 -> i8);
+    impl_as!(U8, as_u8 -> u8);
+    impl_as!(I16, as_i16 -> i16);
+    impl_as!(U16, as_u16 -> u16);
+    impl_as!(I32, as_i32 -> i32);
+    impl_as!(U32, as_u32 -> u32);
+    impl_as!(I64, as_i64 -> i64);
+    impl_as!(U64, as_u64 -> u64);
+    impl_as!(F32, as_f32 -> f32);
+    impl_as!(F64, as_f64 -> f64);
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            Value::String(v) => Some(v),
+            _ => None,
+        }
+    }
+    pub fn to_string(&self) -> String {
+        match self {
+            Value::I8(v) => v.to_string(),
+            Value::U8(v) => v.to_string(),
+            Value::I16(v) => v.to_string(),
+            Value::U16(v) => v.to_string(),
+            Value::I32(v) => v.to_string(),
+            Value::U32(v) => v.to_string(),
+            Value::I64(v) => v.to_string(),
+            Value::U64(v) => v.to_string(),
+            Value::F32(v) => v.to_string(),
+            Value::F64(v) => v.to_string(),
+            Value::String(v) => v.to_string(),
+        }
     }
 }
 
-pub(crate) fn to_csv<P>(path: P, definitions: &TableDefinitions) -> io::Result<()>
-where
-    P: AsRef<Path>,
-{
-    let mut reader = {
-        let file = fs::File::open(&path)?;
-        BufReader::new(file)
-    };
+pub type Record = Vec<Value>;
 
-    let table_id = reader.read_u16::<LittleEndian>()?;
-    let last_block_size = reader.read_u16::<LittleEndian>()?; // size of the last 65kb block
-    let rows = reader.read_u16::<LittleEndian>()?;
-    log::debug!("table_id={}", table_id);
-    log::debug!("last_block_size={}", last_block_size);
-    log::debug!("rows={}", rows);
+pub struct Table {
+    pub id: u16,
+    jump_table: Vec<i32>, // contains record ids, must always have the id of first record
+    pub rows: Vec<Record>,
+}
 
-    if rows == 0 {
-        return Ok(());
-    }
+impl Table {
+    pub fn read<R>(data: R) -> io::Result<Self>
+    where
+        R: Read + Seek,
+    {
+        let mut reader = BufReader::new(data);
 
-    // read type table
-    let fields = reader.read_u8()?;
-    log::debug!("fields={}", fields);
+        let table_id = reader.read_u16::<LittleEndian>()?;
+        let last_block_size: u64 = reader.read_u16::<LittleEndian>()?.into(); // size of the last 65kb block
+        let rows = reader.read_u16::<LittleEndian>()?;
 
-    let mut field_types = Vec::with_capacity(usize::from(fields));
-    for _ in 0..fields {
-        let t = reader.read_u8()?;
-        field_types.push(t);
-    }
-    log::debug!("field_types.raw={:?}", field_types);
-    log::debug!(
-        "field_types.mapped={}",
-        field_types
-            .iter()
-            .map(type_to_str)
-            .collect::<Vec<&str>>()
-            .join(",")
-    );
+        let mut table = Self {
+            id: table_id,
+            jump_table: Vec::default(),
+            rows: Vec::default(),
+        };
 
-    // read jump table
-    reader.seek(SeekFrom::Current(4))?; // step over first row id
-    let first_row_offset = reader.read_u32::<LittleEndian>()?;
-    // skip the rest of the table
-    reader.seek(SeekFrom::Start(u64::from(first_row_offset)))?;
-    log::debug!("first_row_offset={}", first_row_offset);
+        if rows == 0 {
+            return Ok(table);
+        }
 
-    let mut writer = match definitions.get(&table_id) {
-        Some(def) => {
-            let types: Vec<String> = field_types.iter().map(type_to_str).map(String::from).collect();
-            if types != def.types {
-                log::warn!("Field types in the file and in definitions are not matching");
-                log::warn!("table={:?}", types);
-                log::warn!("  def={:?}", def.types);
+        let fields: usize = reader.read_u8()?.into();
+        let mut field_types = Vec::with_capacity(fields);
+        for _ in 0..fields {
+            let t = reader.read_u8()?;
+            field_types.push(t);
+        }
+
+        // read jump table
+        let first_row_id = reader.read_i32::<LittleEndian>()?;
+        let first_row_offset: u64 = reader.read_u32::<LittleEndian>()?.into();
+        table.jump_table.push(first_row_id);
+
+        loop {
+            let cur_pos = reader.seek(SeekFrom::Current(0))?;
+            if cur_pos == first_row_offset {
+                break; // reached the end of the table
             }
 
-            log::debug!("Writing field names");
-            let out_path = path
-                .as_ref()
-                .with_file_name(format!("{}_{}.csv", table_id, def.name));
-            let mut writer = csv::Writer::from_path(out_path)?;
-            writer.write_record(&def.fields)?;
-            writer
+            let id = reader.read_i32::<LittleEndian>()?;
+            reader.seek(SeekFrom::Current(4))?; // skip offset
+            table.jump_table.push(id);
         }
-        None => {
-            log::warn!("No known field name definitions for {}", table_id);
-            let out_path = path.as_ref().with_extension("csv");
-            csv::Writer::from_path(out_path)?
+
+        for _ in 0..rows {
+            let mut row = Vec::with_capacity(fields);
+
+            for t in &field_types {
+                row.push(Value::read(*t, &mut reader)?);
+            }
+
+            table.rows.push(row);
         }
-    };
 
-    log::debug!("Writing field types");
-    writer.write_record(field_types.iter().map(type_to_str))?;
-
-    log::debug!("Reading data");
-    for _ in 0..rows {
-        let mut row = StringRecord::new();
-
-        for field_type in &field_types {
-            let v = match field_type {
-                1 => reader.read_i8()?.to_string(),
-                2 => reader.read_u8()?.to_string(),
-                3 => reader.read_i16::<LittleEndian>()?.to_string(),
-                4 => reader.read_u16::<LittleEndian>()?.to_string(),
-                5 => reader.read_i32::<LittleEndian>()?.to_string(),
-                6 => reader.read_u32::<LittleEndian>()?.to_string(),
-                7 => reader.read_i64::<LittleEndian>()?.to_string(),
-                8 => reader.read_u64::<LittleEndian>()?.to_string(),
-                9 => reader.read_f32::<LittleEndian>()?.to_string(),
-                10 => reader.read_f64::<LittleEndian>()?.to_string(),
-                11 => {
-                    reader.seek(SeekFrom::Current(1))?; // step over `is_ascii` flag
-
-                    let len = reader.read_u16::<LittleEndian>()?;
-                    let mut buffer = vec![0; usize::from(len)];
-                    reader.read_exact(&mut buffer)?;
-
-                    String::from_utf8_lossy(&buffer)
-                        .replace("\r", "\\r")
-                        .replace("\n", "\\n")
-                }
-                unknown => unimplemented!("type {}", unknown),
-            };
-            row.push_field(&v);
+        let cur_pos = reader.seek(SeekFrom::Current(0))?;
+        if last_block_size != (cur_pos - 4) % 65536 {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "last block sizes didn't match",
+            ));
         }
-        writer.write_record(row.into_iter())?;
+
+        Ok(table)
     }
-
-    let cur_pos = reader.seek(SeekFrom::Current(0))?;
-    if u64::from(last_block_size) != (cur_pos - 4) % 65536 {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            "last block sizes didn't match",
-        ));
-    }
-
-    Ok(())
 }

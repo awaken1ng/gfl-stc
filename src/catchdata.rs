@@ -6,7 +6,7 @@ use std::path::Path;
 
 const KEY: &[u8] = b"c88d016d261eb80ce4d6e41a510d4048";
 
-pub(crate) fn parse<P>(path: P) -> io::Result<()>
+pub fn parse<P>(path: P) -> io::Result<()>
 where
     P: AsRef<Path>,
 {

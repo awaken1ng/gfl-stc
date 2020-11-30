@@ -1,10 +1,12 @@
-use std::env;
 use std::fs;
 use std::path::PathBuf;
+use std::{env, io, path::Path};
 
+mod catchdata;
 mod definitions;
 mod stc;
-mod catchdata;
+
+use crate::definitions::TableDefinitions;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // initialize logger
@@ -41,7 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         match path.extension().unwrap().to_string_lossy().as_ref() {
             "stc" => {
                 log::info!("Parsing {}", path.display());
-                if let Err(why) = stc::to_csv(&path, &definitions) {
+                if let Err(why) = stc_to_csv(&path, &definitions) {
                     log::error!("Failed parsing {}: {}", path.display(), why)
                 }
             }
@@ -58,6 +60,59 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             log::trace!("Deleting {}", path.display());
             fs::remove_file(path)?;
         }
+    }
+
+    Ok(())
+}
+
+pub(crate) fn stc_to_csv<P>(path: P, definitions: &TableDefinitions) -> io::Result<()>
+where
+    P: AsRef<Path>,
+{
+    let file = fs::File::open(&path)?;
+    let table = stc::Table::read(file)?;
+
+    if table.rows.len() == 0 {
+        return Ok(());
+    }
+
+    let types: Vec<String> = table
+        .rows
+        .first()
+        .unwrap() // SAFETY: checked above
+        .iter()
+        .map(stc::Value::type_as_string)
+        .collect();
+
+    let mut writer = match definitions.get(&table.id) {
+        Some(def) => {
+            if types != def.types {
+                log::warn!("Field types in the file and in definitions are not matching");
+                log::warn!("table={:?}", types);
+                log::warn!("  def={:?}", def.types);
+            }
+
+            let out_path = path
+                .as_ref()
+                .with_file_name(format!("{}_{}.csv", table.id, def.name));
+            let mut writer = csv::Writer::from_path(out_path)?;
+            writer.write_record(&def.fields)?;
+            writer
+        }
+        None => {
+            log::warn!("No known field name definitions for {}", table.id);
+            let out_path = path.as_ref().with_extension("csv");
+            csv::Writer::from_path(out_path)?
+        }
+    };
+
+    writer.write_record(types)?;
+
+    for row in table.rows.iter() {
+        writer.write_record(row.iter().map(|v| match v {
+            stc::Value::String(s) => s.replace("\r", "\\r").replace("\n", "\\n"),
+            _ => v.to_string(),
+        }))?;
     }
 
     Ok(())
