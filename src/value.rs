@@ -1,6 +1,11 @@
-use byteorder::{LittleEndian, ReadBytesExt};
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
-use std::io::{self, BufReader, Read, Seek, SeekFrom};
+use std::{
+    convert::{TryFrom, TryInto},
+    io,
+};
+
+use crate::table::Error;
 
 #[derive(Debug)]
 pub enum Value {
@@ -45,8 +50,8 @@ impl Value {
             9 => Value::F32(reader.read_f32::<LittleEndian>()?),
             10 => Value::F64(reader.read_f64::<LittleEndian>()?),
             11 => {
-                // UTF-8 is compatible with ASCII, so we can ignore this
-                // we could seek over it, but that would require io::Seek requirement on the reader
+                // UTF-8 is compatible with ASCII, so we can ignore this,
+                // we could seek over it, but that would require io::Seek constraint on the reader
                 reader.read_u8()?; // step over `is_ascii` flag
 
                 let len = reader.read_u16::<LittleEndian>()?;
@@ -67,6 +72,35 @@ impl Value {
         Ok(value)
     }
 
+    pub fn serialize<W>(&self, writer: &mut W) -> Result<(), Error>
+    where
+        W: WriteBytesExt,
+    {
+        match self {
+            Value::I8(v) => writer.write_i8(*v)?,
+            Value::U8(v) => writer.write_u8(*v)?,
+            Value::I16(v) => writer.write_i16::<LittleEndian>(*v)?,
+            Value::U16(v) => writer.write_u16::<LittleEndian>(*v)?,
+            Value::I32(v) => writer.write_i32::<LittleEndian>(*v)?,
+            Value::U32(v) => writer.write_u32::<LittleEndian>(*v)?,
+            Value::I64(v) => writer.write_i64::<LittleEndian>(*v)?,
+            Value::U64(v) => writer.write_u64::<LittleEndian>(*v)?,
+            Value::F32(v) => writer.write_f32::<LittleEndian>(*v)?,
+            Value::F64(v) => writer.write_f64::<LittleEndian>(*v)?,
+            Value::String(s) => {
+                let is_ascii = s.is_ascii();
+                writer.write_u8(is_ascii as u8)?;
+
+                let len: u16 = s.len().try_into().map_err(|_| Error::StringTooBig)?;
+                writer.write_u16::<LittleEndian>(len)?;
+
+                writer.write_all(s.as_bytes())?;
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn type_as_u8(&self) -> u8 {
         match self {
             Value::I8(_) => 1,
@@ -82,6 +116,7 @@ impl Value {
             Value::String(_) => 11,
         }
     }
+
     pub fn type_as_string(&self) -> String {
         match self {
             Value::I8(_) => "i8",
@@ -98,6 +133,7 @@ impl Value {
         }
         .to_string()
     }
+
     impl_as!(I8, as_i8 -> i8);
     impl_as!(U8, as_u8 -> u8);
     impl_as!(I16, as_i16 -> i16);
@@ -114,7 +150,10 @@ impl Value {
             _ => None,
         }
     }
-    pub fn to_string(&self) -> String {
+}
+
+impl ToString for Value {
+    fn to_string(&self) -> String {
         match self {
             Value::I8(v) => v.to_string(),
             Value::U8(v) => v.to_string(),
@@ -131,76 +170,34 @@ impl Value {
     }
 }
 
-pub type Record = Vec<Value>;
+#[derive(Debug)]
+pub struct InvalidType;
 
-pub struct Table {
-    pub id: u16,
-    jump_table: Vec<i32>, // contains record ids, must always have the id of first record
-    pub rows: Vec<Record>,
+macro_rules! impl_try_from {
+    ($type:ty, $fn:tt) => {
+        impl TryFrom<&Value> for $type {
+            type Error = InvalidType;
+
+            fn try_from(value: &Value) -> Result<Self, Self::Error> {
+                value.$fn().ok_or(InvalidType)
+            }
+        }
+    };
 }
 
-impl Table {
-    pub fn read<R>(data: R) -> io::Result<Self>
-    where
-        R: Read + Seek,
-    {
-        let mut reader = BufReader::new(data);
+impl_try_from!(i8, as_i8);
+impl_try_from!(u8, as_u8);
+impl_try_from!(i16, as_i16);
+impl_try_from!(u16, as_u16);
+impl_try_from!(i32, as_i32);
+impl_try_from!(u32, as_u32);
+impl_try_from!(i64, as_i64);
+impl_try_from!(u64, as_u64);
+impl_try_from!(f32, as_f32);
+impl_try_from!(f64, as_f64);
 
-        let table_id = reader.read_u16::<LittleEndian>()?;
-        let last_block_size: u64 = reader.read_u16::<LittleEndian>()?.into(); // size of the last 65kb block
-        let rows = reader.read_u16::<LittleEndian>()?;
-
-        let mut table = Self {
-            id: table_id,
-            jump_table: Vec::default(),
-            rows: Vec::default(),
-        };
-
-        if rows == 0 {
-            return Ok(table);
-        }
-
-        let fields: usize = reader.read_u8()?.into();
-        let mut field_types = Vec::with_capacity(fields);
-        for _ in 0..fields {
-            let t = reader.read_u8()?;
-            field_types.push(t);
-        }
-
-        // read jump table
-        let first_row_id = reader.read_i32::<LittleEndian>()?;
-        let first_row_offset: u64 = reader.read_u32::<LittleEndian>()?.into();
-        table.jump_table.push(first_row_id);
-
-        loop {
-            let cur_pos = reader.seek(SeekFrom::Current(0))?;
-            if cur_pos == first_row_offset {
-                break; // reached the end of the table
-            }
-
-            let id = reader.read_i32::<LittleEndian>()?;
-            reader.seek(SeekFrom::Current(4))?; // skip offset
-            table.jump_table.push(id);
-        }
-
-        for _ in 0..rows {
-            let mut row = Vec::with_capacity(fields);
-
-            for t in &field_types {
-                row.push(Value::read(*t, &mut reader)?);
-            }
-
-            table.rows.push(row);
-        }
-
-        let cur_pos = reader.seek(SeekFrom::Current(0))?;
-        if last_block_size != (cur_pos - 4) % 65536 {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "last block sizes didn't match",
-            ));
-        }
-
-        Ok(table)
+impl From<&Value> for String {
+    fn from(v: &Value) -> Self {
+        v.to_string()
     }
 }

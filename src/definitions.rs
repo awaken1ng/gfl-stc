@@ -1,58 +1,103 @@
 use std::collections::HashMap;
-use std::fs;
-use std::io::{self, BufRead, Cursor};
 
-#[derive(Debug)]
-pub(crate) struct TableDefinition {
-    pub(crate) name: String,
-    pub(crate) fields: Vec<String>,
-    pub(crate) types: Vec<String>,
+#[derive(Debug, PartialEq)]
+pub struct TableDefinition {
+    pub name: String,
+    pub fields: Vec<String>,
+    pub types: Vec<String>,
 }
 
-pub(crate) type TableDefinitions = HashMap<u16, TableDefinition>;
+pub type TableDefinitions = HashMap<u16, TableDefinition>;
 
-pub(crate) fn load(path: Option<String>) -> io::Result<TableDefinitions> {
-    let path = match path {
-        Some(path) => path,
-        None => return Ok(HashMap::default()),
-    };
-    let file = fs::read_to_string(path)?;
-    let mut buffer = Cursor::new(file);
+#[derive(Debug)]
+pub enum Error {
+    NoID,
+    InvalidID(std::num::ParseIntError),
+    NoName,
+    NoFieldNames,
+    NoFieldTypes,
+    FieldNamesAndTypesMismatch,
+}
 
-    // read first line "{region},{version}"
-    let header = {
-        let mut string = String::default();
-        buffer.read_line(&mut string)?;
-        string
-    };
-    let mut header = header.trim().split(',');
-
-    let region = header.next().unwrap();
-    let version = header.next().unwrap();
-
-    log::info!(
-        "Reading table definitions from {} client v{}",
-        region,
-        version
-    );
-
+pub fn parse(
+    // path: Option<String>
+    contents: &str,
+) -> Result<TableDefinitions, Error> {
     let mut definitions = HashMap::new();
 
-    for line in buffer.lines() {
-        let line = line?;
-        let mut line: Vec<&str> = line.split(';').collect();
+    for line in contents.lines() {
+        let line = line.trim();
+        if line.starts_with("//") || line.is_empty() {
+            continue;
+        }
 
-        let id: u16 = line
-            .remove(0)
+        let mut line = line.split(";");
+        let id = line
+            .next()
+            .ok_or(Error::NoID)?
             .parse()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-        let name = line.remove(0).to_string();
-        let fields = line.remove(0).split(',').map(String::from).collect();
-        let types = line.remove(0).split(',').map(String::from).collect();
+            .map_err(Error::InvalidID)?;
+        let name = line.next().ok_or(Error::NoName)?.to_owned();
+        let fields: Vec<String> = line
+            .next()
+            .ok_or(Error::NoFieldNames)?
+            .split(",")
+            .map(String::from)
+            .collect();
+        let types: Vec<String> = line
+            .next()
+            .ok_or(Error::NoFieldTypes)?
+            .split(",")
+            .map(String::from)
+            .collect();
 
-        definitions.insert(id, TableDefinition { name, fields, types });
+        if fields.len() != types.len() {
+            return Err(Error::FieldNamesAndTypesMismatch);
+        }
+
+        definitions.insert(
+            id,
+            TableDefinition {
+                name,
+                fields,
+                types,
+            },
+        );
     }
 
-    log::info!("| {} definitions were read", definitions.len());
     Ok(definitions)
+}
+
+#[test]
+fn test() {
+    let defs = r#"
+    // comment
+    5000;table_1;col_1,col_2;i32,i32
+    5001;table_2;col_1,col_2;i32,i32
+    "#;
+
+    let mut parsed_defs = HashMap::new();
+    let fields: Vec<String> = vec!["col_1", "col_2"]
+        .into_iter()
+        .map(String::from)
+        .collect();
+    let types: Vec<String> = vec!["i32", "i32"].into_iter().map(String::from).collect();
+    parsed_defs.insert(
+        5000,
+        TableDefinition {
+            name: "table_1".to_owned(),
+            fields: fields.clone(),
+            types: types.clone(),
+        },
+    );
+    parsed_defs.insert(
+        5001,
+        TableDefinition {
+            name: "table_2".to_owned(),
+            fields,
+            types,
+        },
+    );
+
+    assert_eq!(parse(defs).unwrap(), parsed_defs);
 }

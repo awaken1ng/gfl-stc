@@ -3,7 +3,7 @@ Converts `.stc` tables into `.csv` files and splits `catchdata.dat` into `.json`
 # Data versioning
 During login sequence, game client queries `Index/version` endpoint to check if client is up-to-date.
 
-If `data_version` in response differs from the `version` in client preferences, update is initiated. 
+If `data_version` in response differs from the `version` in client preferences, update is initiated.
 
 The following function is used to get the URL:
 
@@ -26,7 +26,7 @@ After completing the download, the archive is placed at `<internal storage>/Andr
     |  id   |  lbs  |  rows |
     +---+---+---+---+---+---+
     +---+===================+
-    | f |    field types    |  
+    | f |    field types    |
     +---+===================+
     +=======================+
     |       jump table      |
@@ -58,7 +58,7 @@ where:
         +---+---+---+======|
         ```
         where `a` is `is_ascii` flag, `str` is ASCII or UTF-8 encoded
-- `jump table` is a sequence of two `u32` integers: `record_id` and absolute `offset`, at least one item is always present (of the first record) 
+- `jump table` is a sequence of two `i32` and `u32` integers: `record_id` and absolute `offset`, at least one item is always present (of the first record)
 - `data` is a sequence of `rows`, each row have `f` fields
 
 *※ Little-endian ordering is used*
