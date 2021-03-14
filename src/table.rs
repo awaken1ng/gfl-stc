@@ -414,7 +414,7 @@ fn getters() {
     let named = NamedTable {
         name: "Test".into(),
         fields: vec!["id".into(), "array".into(), "map".into()],
-        table
+        table,
     };
 
     assert_eq!(named.value::<i32>(0, "id"), Some(0));

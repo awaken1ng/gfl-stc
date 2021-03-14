@@ -51,7 +51,6 @@ fn stc_to_csv<P>(in_path: P, defs: &definitions::TableDefinitions)
 where
     P: AsRef<Path>,
 {
-
     let mut file = fs::File::open(&in_path).expect("failed to open stc file");
     let table = stc::table::Table::deserialize(&mut file).expect("failed to deserialize stc table");
 
