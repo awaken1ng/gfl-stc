@@ -5,10 +5,11 @@ edition = "2018"
 
 [[bin]]
 name = "stc"
-required-features = ["pico-args"]
+required-features = ["termcolor", "pico-args"]
 
 [dependencies]
-pico-args = { version = "0.4", optional = true }
+termcolor = { version = "1.1", optional = true }
+pico-args = { version = "0.4", optional = true, default-features = false }
 byteorder = "1.3"
 csv = "1.1"
 flate2 = "1.0"

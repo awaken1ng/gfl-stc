@@ -1,10 +1,30 @@
 use std::{
     ffi::OsStr,
+    fmt::Display,
     fs,
+    io::Write,
     path::{Path, PathBuf},
 };
 
+use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
+
 use stc::definitions;
+
+fn colored_println<D>(prefix: &str, color: termcolor::Color, message: D)
+where
+    D: Display,
+{
+    let mut stdout = StandardStream::stdout(ColorChoice::Auto);
+    stdout
+        .set_color(ColorSpec::new().set_fg(Some(color)).set_bold(true))
+        .expect("failed to set text colour");
+    write!(&mut stdout, "{} ", prefix).expect("failed to write to stdout");
+
+    stdout
+        .set_color(&ColorSpec::default())
+        .expect("failed to set text color");
+    writeln!(&mut stdout, "{}", message).expect("failed to write to stdout");
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = pico_args::Arguments::from_env();
@@ -29,7 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for path in files.iter().map(PathBuf::from) {
         if !path.exists() || !path.is_file() {
-            eprintln!("! Skipping: {}", path.display());
+            colored_println("Skipping", Color::Yellow, path.display());
             continue;
         }
 
@@ -39,7 +59,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         if delete {
-            eprintln!("Deleting {}", path.display());
+            colored_println("Deleting", Color::Red, path.display());
             fs::remove_file(path)?;
         }
     }
@@ -51,26 +71,23 @@ fn stc_to_csv<P>(in_path: P, defs: &definitions::TableDefinitions)
 where
     P: AsRef<Path>,
 {
+    let in_path = in_path.as_ref();
     let mut file = fs::File::open(&in_path).expect("failed to open stc file");
     let table = stc::table::Table::deserialize(&mut file).expect("failed to deserialize stc table");
 
     if table.records.len() == 0 {
-        eprintln!("Table is empty: {}", in_path.as_ref().display());
+        colored_println("   Empty", Color::Cyan, in_path.display());
         return;
     }
 
     let def = defs.get(&table.id);
 
     let out_path = match def {
-        Some(def) => in_path
-            .as_ref()
-            .with_file_name(format!("{}_{}.csv", table.id, def.name)),
-        None => in_path.as_ref().with_extension("csv"),
+        Some(def) => in_path.with_file_name(format!("{}_{}.csv", table.id, def.name)),
+        None => in_path.with_extension("csv"),
     };
 
-    let n = out_path.file_name().unwrap_or_default().to_string_lossy();
-
-    println!("Converting {} into {}", in_path.as_ref().display(), n);
+    colored_println(" Parsing", Color::Green, in_path.display());
 
     let mut writer = csv::WriterBuilder::default()
         .flexible(true) // for bookmarks
