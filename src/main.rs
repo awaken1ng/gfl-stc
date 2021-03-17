@@ -20,9 +20,7 @@ where
         .expect("failed to set text colour");
     write!(&mut stdout, "{} ", prefix).expect("failed to write to stdout");
 
-    stdout
-        .set_color(&ColorSpec::default())
-        .expect("failed to set text color");
+    stdout.reset().expect("failed to reset text color");
     writeln!(&mut stdout, "{}", message).expect("failed to write to stdout");
 }
 
@@ -90,7 +88,6 @@ where
     colored_println(" Parsing", Color::Green, in_path.display());
 
     let mut writer = csv::WriterBuilder::default()
-        .flexible(true) // for bookmarks
         .from_path(out_path)
         .expect("failed to open file for writing");
 
@@ -115,11 +112,6 @@ where
     writer
         .write_record(&field_types)
         .expect("failed to write field types");
-
-    let bookmarks = table.bookmarks.iter().map(|id| id.to_string());
-    writer
-        .write_record(bookmarks)
-        .expect("failed to write bookmarks");
 
     for record in table.records.iter() {
         let stringified = record.iter().map(|col| match col {

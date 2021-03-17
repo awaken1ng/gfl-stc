@@ -4,7 +4,6 @@ use std::{
     hash::Hash,
     io::{self, Read, Seek, SeekFrom},
     str::FromStr,
-    vec,
 };
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
@@ -33,9 +32,6 @@ pub enum Error {
     /// Row has more than 255 fields
     TooManyFields,
 
-    /// Must have at least one bookmark (first record)
-    NoBookmarks,
-
     /// Bookmark out of bounds due to 32-bit limit
     OutOfBounds,
 }
@@ -49,7 +45,6 @@ impl From<io::Error> for Error {
 #[derive(Debug)]
 pub struct Table {
     pub id: u16,
-    pub bookmarks: Vec<i32>, // contains record ids, must always have the id of first record
     pub records: Vec<Record>,
 }
 
@@ -57,7 +52,6 @@ impl Table {
     pub fn new(id: u16) -> Self {
         Self {
             id,
-            bookmarks: Vec::new(),
             records: Vec::new(),
         }
     }
@@ -84,20 +78,11 @@ impl Table {
         }
 
         // read jump table
-        let first_row_id = reader.read_i32::<LittleEndian>()?;
+        let _first_row_id = reader.read_i32::<LittleEndian>()?;
         let first_row_offset: u64 = reader.read_u32::<LittleEndian>()?.into();
-        table.bookmarks.push(first_row_id);
 
-        loop {
-            let cur_pos = reader.seek(SeekFrom::Current(0))?;
-            if cur_pos == first_row_offset {
-                break; // reached the end of the table
-            }
-
-            let id = reader.read_i32::<LittleEndian>()?;
-            reader.seek(SeekFrom::Current(4))?; // skip offset
-            table.bookmarks.push(id);
-        }
+        // skip the rest of the table
+        reader.seek(SeekFrom::Start(first_row_offset))?;
 
         for _ in 0..rows {
             let mut row = Vec::with_capacity(fields);
@@ -120,7 +105,7 @@ impl Table {
         Ok(table)
     }
 
-    pub fn add_record(&mut self, record: Vec<Value>, bookmark: bool) -> Result<(), Error> {
+    pub fn add_record(&mut self, record: Vec<Value>) -> Result<(), Error> {
         if self.records.len() >= u16::MAX.into() {
             return Err(Error::TableIsFull);
         }
@@ -130,25 +115,14 @@ impl Table {
         }
 
         // first value must be i32
-        let id = match record.first() {
-            Some(Value::I32(id)) => id,
+        match record.first() {
+            Some(Value::I32(_)) => {}
             _ => return Err(Error::InvalidID),
-        };
+        }
 
-        if self.records.is_empty() {
-            // if adding the first row, add it's ID to the jump table
-            self.bookmarks.push(*id);
-        } else {
-            // SAFETY checked by branch above
-            let first = self.records.first().unwrap();
-
-            // make sure the rows are consistent in length
+        if let Some(first) = self.records.first() {
             if first.len() != record.len() {
                 return Err(Error::InconsistentLength);
-            }
-
-            if bookmark {
-                self.bookmarks.push(*id);
             }
         }
 
@@ -188,31 +162,25 @@ impl Table {
             writer.write_u8(v.type_as_u8())?;
         }
 
-        if self.bookmarks.is_empty() {
-            return Err(Error::NoBookmarks);
+        // jump table placeholder
+        let jump_table_size = 1 + (self.records.len() / 100);
+        for _ in 0..jump_table_size {
+            writer.write_i32::<LittleEndian>(0)?; // id
+            writer.write_u32::<LittleEndian>(0)?; // offset
         }
 
-        // jump table
-        for id in self.bookmarks.iter() {
-            writer.write_i32::<LittleEndian>(*id)?;
-            writer.write_u32::<LittleEndian>(0)?; // offset placeholder
-        }
+        let mut jump_table = Vec::with_capacity(jump_table_size);
 
-        let mut offsets = vec![];
-
-        for row in self.records.iter() {
-            for (i, field) in row.into_iter().enumerate() {
-                if i == 0 {
+        for (row_i, row) in self.records.iter().enumerate() {
+            for (field_i, field) in row.into_iter().enumerate() {
+                if row_i % 100 == 0 && field_i == 0 {
                     let id = field.as_i32().ok_or(Error::InvalidID)?;
+                    let pos: u32 = writer
+                        .seek(SeekFrom::Current(0))?
+                        .try_into()
+                        .map_err(|_| Error::OutOfBounds)?;
 
-                    if self.bookmarks.contains(&id) {
-                        let pos: u32 = writer
-                            .seek(SeekFrom::Current(0))?
-                            .try_into()
-                            .map_err(|_| Error::OutOfBounds)?;
-
-                        offsets.push(pos);
-                    }
+                    jump_table.push((id, pos));
                 }
 
                 field.serialize(writer)?;
@@ -223,11 +191,13 @@ impl Table {
         writer.seek(SeekFrom::Start(2))?;
         writer.write_u16::<LittleEndian>(lbs as u16)?;
 
+        assert_eq!(jump_table.len(), jump_table_size);
+
         // seek to the start of the jump table
         // id (2), lbs (2), rows_n (2), fields_n (1), field_types (fields_n)
         writer.seek(SeekFrom::Start(7 + u64::from(fields_n)))?;
-        for offset in offsets {
-            writer.seek(SeekFrom::Current(4))?; // step over id
+        for (id, offset) in jump_table {
+            writer.write_i32::<LittleEndian>(id)?;
             writer.write_u32::<LittleEndian>(offset)?;
         }
 
@@ -342,10 +312,7 @@ fn adding() {
 
     // record with invalid id
     let record = vec![Value::U8(0)];
-    assert!(matches!(
-        table.add_record(record, false),
-        Err(Error::InvalidID)
-    ));
+    assert!(matches!(table.add_record(record), Err(Error::InvalidID)));
 
     // record with too many fields
     let mut record = vec![Value::I32(0)];
@@ -353,27 +320,27 @@ fn adding() {
         record.push(Value::U8(0));
     }
     assert!(matches!(
-        table.add_record(record, false),
+        table.add_record(record),
         Err(Error::TooManyFields)
     ));
 
     // too many rows
     let mut table = Table::new(0);
     for _ in 0..65535 {
-        table.add_record(vec![Value::I32(0)], false).unwrap();
+        table.add_record(vec![Value::I32(0)]).unwrap();
     }
     assert!(matches!(
-        table.add_record(vec![Value::I32(0)], false),
+        table.add_record(vec![Value::I32(0)]),
         Err(Error::TableIsFull)
     ));
 
     // inconsistent row length
     let mut table = Table::new(0);
     table
-        .add_record(vec![Value::I32(0), Value::I32(0)], false)
+        .add_record(vec![Value::I32(0), Value::I32(0)])
         .unwrap();
     assert!(matches!(
-        table.add_record(vec![Value::I32(0)], false),
+        table.add_record(vec![Value::I32(0)]),
         Err(Error::InconsistentLength)
     ))
 }
@@ -382,14 +349,11 @@ fn adding() {
 fn getters() {
     let mut table = Table::new(1);
     table
-        .add_record(
-            vec![
-                Value::I32(0),
-                Value::String("0,1,2".into()),
-                Value::String("a:0,b:1,c:2".into()),
-            ],
-            false,
-        )
+        .add_record(vec![
+            Value::I32(0),
+            Value::String("0,1,2".into()),
+            Value::String("a:0,b:1,c:2".into()),
+        ])
         .unwrap();
 
     assert_eq!(table.value::<i32>(0, 0), Some(0));

@@ -58,7 +58,7 @@ where:
         +---+---+---+======|
         ```
         where `a` is `is_ascii` flag, `str` is ASCII or UTF-8 encoded
-- `jump table` is a sequence of two `i32` and `u32` integers: `record_id` and absolute `offset`, at least one item is always present (of the first record)
+- `jump table` is a sequence of two `i32` and `u32` integers (`record_id` and absolute `offset`) of every 100th record starting with first record (with 0-based indexing: 0th, 100th, 200th, etc)
 - `data` is a sequence of `rows`, each row have `f` fields
 
 *※ Little-endian ordering is used*
