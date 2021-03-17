@@ -73,7 +73,7 @@ where
     println!("Converting {} into {}", in_path.as_ref().display(), n);
 
     let mut writer = csv::WriterBuilder::default()
-        .flexible(true)
+        .flexible(true) // for bookmarks
         .from_path(out_path)
         .expect("failed to open file for writing");
 
@@ -99,10 +99,9 @@ where
         .write_record(&field_types)
         .expect("failed to write field types");
 
-    let bookmarks: Vec<String> = table.bookmarks.iter().map(|id| id.to_string()).collect();
-    let bookmarks = format!("bookmarks:{}", bookmarks.join(","));
+    let bookmarks = table.bookmarks.iter().map(|id| id.to_string());
     writer
-        .write_record(&[bookmarks])
+        .write_record(bookmarks)
         .expect("failed to write bookmarks");
 
     for record in table.records.iter() {
