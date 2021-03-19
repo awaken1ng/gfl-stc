@@ -257,39 +257,69 @@ impl Table {
 
 pub struct NamedTable {
     pub name: String,
-    pub fields: Vec<String>,
+    // mapping from id field to row index
+    id_to_index: HashMap<i32, usize>,
+    // mapping from field name to field index
+    field_to_index: HashMap<String, usize>,
     pub table: Table,
 }
 
 impl NamedTable {
+    /// SAFETY panics if first column in record is not i32
     pub fn from_definition(table: Table, def: &TableDefinition) -> Self {
+        let field_to_index: HashMap<String, usize> = def
+            .fields
+            .clone()
+            .into_iter()
+            .enumerate()
+            .map(|(i, n)| (n, i))
+            .collect();
+
+        let id_to_index: HashMap<i32, usize> = table
+            .records
+            .iter()
+            .enumerate()
+            .map(|(i, row)| {
+                (
+                    row.get(0)
+                        .map(Value::as_i32)
+                        .flatten()
+                        .expect("first column missing or not i32"),
+                    i,
+                )
+            })
+            .collect();
+
         Self {
             name: def.name.clone(),
-            fields: def.fields.clone(),
+            field_to_index,
+            id_to_index,
             table,
         }
     }
 
-    pub fn value<'a, T>(&'a self, row: usize, column: &str) -> Option<T>
+    pub fn value<'a, T>(&'a self, row_id: i32, column_name: &str) -> Option<T>
     where
         T: TryFrom<&'a Value>,
     {
-        let column = self.fields.iter().position(|n| n == column)?;
-        self.table.value(row, column)
+        let row_index = self.id_to_index.get(&row_id)?;
+        let column_index = self.field_to_index.get(column_name)?;
+        self.table.value(*row_index, *column_index)
     }
 
-    pub fn array<'a, T>(&'a self, row: usize, column: &str, separator: &str) -> Option<Vec<T>>
+    pub fn array<'a, T>(&'a self, row_id: i32, column_name: &str, separator: &str) -> Option<Vec<T>>
     where
         T: FromStr,
     {
-        let column = self.fields.iter().position(|n| n == column)?;
-        self.table.array(row, column, separator)
+        let row_index = self.id_to_index.get(&row_id)?;
+        let column_index = self.field_to_index.get(column_name)?;
+        self.table.array(*row_index, *column_index, separator)
     }
 
     pub fn map<K, V>(
         &self,
-        row: usize,
-        column: &str,
+        row_id: i32,
+        column_name: &str,
         pair_separator: &str,
         kv_separator: &str,
     ) -> Option<HashMap<K, V>>
@@ -297,8 +327,9 @@ impl NamedTable {
         K: FromStr + Eq + Hash,
         V: FromStr,
     {
-        let column = self.fields.iter().position(|n| n == column)?;
-        self.table.map(row, column, pair_separator, kv_separator)
+        let row_index = self.id_to_index.get(&row_id)?;
+        let column_index = self.field_to_index.get(column_name)?;
+        self.table.map(*row_index, *column_index, pair_separator, kv_separator)
     }
 }
 
@@ -350,14 +381,14 @@ fn getters() {
     let mut table = Table::new(1);
     table
         .add_record(vec![
-            Value::I32(0),
+            Value::I32(-1),
             Value::String("0,1,2".into()),
             Value::String("a:0,b:1,c:2".into()),
         ])
         .unwrap();
 
-    assert_eq!(table.value::<i32>(0, 0), Some(0));
-    assert_eq!(table.value::<String>(0, 0), Some("0".into()));
+    assert_eq!(table.value::<i32>(0, 0), Some(-1));
+    assert_eq!(table.value::<String>(0, 0), Some("-1".into()));
 
     let array = vec![0, 1, 2];
     assert_eq!(table.value::<i32>(0, 1), None);
@@ -375,13 +406,14 @@ fn getters() {
 
     assert_eq!(table.value::<i32>(1, 0), None);
 
-    let named = NamedTable {
+    let def = TableDefinition {
         name: "Test".into(),
         fields: vec!["id".into(), "array".into(), "map".into()],
-        table,
+        types: vec!["i32".into(), "string".into(), "string".into()],
     };
+    let named = NamedTable::from_definition(table, &def);
 
-    assert_eq!(named.value::<i32>(0, "id"), Some(0));
-    assert_eq!(named.array::<i32>(0, "array", ","), Some(array));
-    assert_eq!(named.map::<String, i32>(0, "map", ",", ":"), Some(map));
+    assert_eq!(named.value::<i32>(-1, "id"), Some(-1));
+    assert_eq!(named.array::<i32>(-1, "array", ","), Some(array));
+    assert_eq!(named.map::<String, i32>(-1, "map", ",", ":"), Some(map));
 }
