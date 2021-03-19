@@ -142,7 +142,7 @@ impl Table {
         let mut jump_table = Vec::with_capacity(jump_table_size);
 
         for (row_i, row) in self.records.iter().enumerate() {
-            for (field_i, field) in row.into_iter().enumerate() {
+            for (field_i, field) in row.iter().enumerate() {
                 if row_i % 100 == 0 && field_i == 0 {
                     let id = field.as_i32().ok_or(ParsingError::InvalidID)?;
                     let pos: u32 = writer
@@ -187,8 +187,8 @@ impl Table {
     }
 
     /// Convert `"v,v,v"` string into `Vec<T>`
-    pub fn array<'a, T>(
-        &'a self,
+    pub fn array<T>(
+        &self,
         row: usize,
         column: usize,
         separator: &str,

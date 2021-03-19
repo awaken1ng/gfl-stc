@@ -73,7 +73,7 @@ where
     let mut file = fs::File::open(&in_path).expect("failed to open stc file");
     let table = stc::Table::deserialize(&mut file).expect("failed to deserialize stc table");
 
-    if table.records.len() == 0 {
+    if table.records.is_empty() {
         colored_println("   Empty", Color::Cyan, in_path.display());
         return;
     }

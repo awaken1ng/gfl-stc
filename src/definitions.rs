@@ -31,7 +31,7 @@ pub fn parse(
             continue;
         }
 
-        let mut line = line.split(";");
+        let mut line = line.split(';');
         let id = line
             .next()
             .ok_or(Error::NoID)?
@@ -41,13 +41,13 @@ pub fn parse(
         let fields: Vec<String> = line
             .next()
             .ok_or(Error::NoFieldNames)?
-            .split(",")
+            .split(',')
             .map(String::from)
             .collect();
         let types: Vec<String> = line
             .next()
             .ok_or(Error::NoFieldTypes)?
-            .split(",")
+            .split(',')
             .map(String::from)
             .collect();
 
