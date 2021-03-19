@@ -42,7 +42,7 @@ impl From<io::Error> for Error {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Table {
     pub id: u16,
     pub records: Vec<Record>,
