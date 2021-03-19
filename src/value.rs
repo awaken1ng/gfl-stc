@@ -7,7 +7,7 @@ use std::{
 
 use crate::table::Error;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Value {
     I8(i8),
     U8(u8),
