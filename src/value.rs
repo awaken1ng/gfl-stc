@@ -5,7 +5,7 @@ use std::{
     io,
 };
 
-use crate::table::Error;
+use crate::ParsingError;
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -72,7 +72,7 @@ impl Value {
         Ok(value)
     }
 
-    pub fn serialize<W>(&self, writer: &mut W) -> Result<(), Error>
+    pub fn serialize<W>(&self, writer: &mut W) -> Result<(), ParsingError>
     where
         W: WriteBytesExt,
     {
@@ -91,7 +91,7 @@ impl Value {
                 let is_ascii = s.is_ascii();
                 writer.write_u8(is_ascii as u8)?;
 
-                let len: u16 = s.len().try_into().map_err(|_| Error::StringTooBig)?;
+                let len: u16 = s.len().try_into().map_err(|_| ParsingError::StringTooBig)?;
                 writer.write_u16::<LittleEndian>(len)?;
 
                 writer.write_all(s.as_bytes())?;

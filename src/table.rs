@@ -2,45 +2,15 @@ use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
     hash::Hash,
-    io::{self, Read, Seek, SeekFrom},
+    io::{Read, Seek, SeekFrom},
     str::FromStr,
 };
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
-use crate::{definitions::TableDefinition, Value};
+use crate::{AccessError, ParsingError, Value};
 
 pub type Record = Vec<Value>;
-
-#[derive(Debug)]
-pub enum Error {
-    IO(io::Error),
-
-    LastBlockSizeMismatch,
-
-    /// First field in the record must always be `i32`
-    InvalidID,
-
-    InconsistentLength,
-
-    /// String exceeded the 16-bit size limit
-    StringTooBig,
-
-    /// Rows reached max capacity
-    TableIsFull,
-
-    /// Row has more than 255 fields
-    TooManyFields,
-
-    /// Bookmark out of bounds due to 32-bit limit
-    OutOfBounds,
-}
-
-impl From<io::Error> for Error {
-    fn from(err: io::Error) -> Self {
-        Self::IO(err)
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct Table {
@@ -56,7 +26,7 @@ impl Table {
         }
     }
 
-    pub fn deserialize<R>(reader: &mut R) -> io::Result<Self>
+    pub fn deserialize<R>(reader: &mut R) -> Result<Self, ParsingError>
     where
         R: Read + Seek,
     {
@@ -96,33 +66,30 @@ impl Table {
 
         let cur_pos = reader.seek(SeekFrom::Current(0))?;
         if last_block_size != (cur_pos - 4) % 65536 {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "last block sizes didn't match",
-            ));
+            return Err(ParsingError::LastBlockSizeMismatch);
         }
 
         Ok(table)
     }
 
-    pub fn add_record(&mut self, record: Vec<Value>) -> Result<(), Error> {
+    pub fn add_record(&mut self, record: Vec<Value>) -> Result<(), ParsingError> {
         if self.records.len() >= u16::MAX.into() {
-            return Err(Error::TableIsFull);
+            return Err(ParsingError::TableIsFull);
         }
 
         if record.len() > u8::MAX.into() {
-            return Err(Error::TooManyFields);
+            return Err(ParsingError::TooManyFields);
         }
 
         // first value must be i32
         match record.first() {
             Some(Value::I32(_)) => {}
-            _ => return Err(Error::InvalidID),
+            _ => return Err(ParsingError::InvalidID),
         }
 
         if let Some(first) = self.records.first() {
             if first.len() != record.len() {
-                return Err(Error::InconsistentLength);
+                return Err(ParsingError::InconsistentLength);
             }
         }
 
@@ -131,7 +98,7 @@ impl Table {
         Ok(())
     }
 
-    pub fn serialize<W>(&self, writer: &mut W) -> Result<(), Error>
+    pub fn serialize<W>(&self, writer: &mut W) -> Result<(), ParsingError>
     where
         W: WriteBytesExt + Seek,
     {
@@ -143,7 +110,7 @@ impl Table {
             .records
             .len()
             .try_into()
-            .map_err(|_| Error::TableIsFull)?;
+            .map_err(|_| ParsingError::TableIsFull)?;
 
         writer.write_u16::<LittleEndian>(records_n)?;
 
@@ -154,7 +121,10 @@ impl Table {
         // SAFETY checked above
         let first = self.records.first().unwrap();
 
-        let fields_n: u8 = first.len().try_into().map_err(|_| Error::TooManyFields)?;
+        let fields_n: u8 = first
+            .len()
+            .try_into()
+            .map_err(|_| ParsingError::TooManyFields)?;
         writer.write_u8(fields_n)?;
 
         // field types
@@ -174,11 +144,11 @@ impl Table {
         for (row_i, row) in self.records.iter().enumerate() {
             for (field_i, field) in row.into_iter().enumerate() {
                 if row_i % 100 == 0 && field_i == 0 {
-                    let id = field.as_i32().ok_or(Error::InvalidID)?;
+                    let id = field.as_i32().ok_or(ParsingError::InvalidID)?;
                     let pos: u32 = writer
                         .seek(SeekFrom::Current(0))?
                         .try_into()
-                        .map_err(|_| Error::OutOfBounds)?;
+                        .map_err(|_| ParsingError::OutOfBounds)?;
 
                     jump_table.push((id, pos));
                 }
@@ -206,26 +176,36 @@ impl Table {
         Ok(())
     }
 
-    pub fn value<'a, T>(&'a self, row: usize, column: usize) -> Option<T>
+    pub fn value<'a, T>(&'a self, row: usize, column: usize) -> Result<T, AccessError>
     where
         T: TryFrom<&'a Value>,
     {
-        let field = self.records.get(row)?.get(column)?;
-        T::try_from(field).ok()
+        let row = self.records.get(row).ok_or(AccessError::RowNotFound)?;
+        let column = row.get(column).ok_or(AccessError::ColumnNotFound)?;
+
+        T::try_from(column).map_err(|_| AccessError::ConversionFailed)
     }
 
     /// Convert `"v,v,v"` string into `Vec<T>`
-    pub fn array<'a, T>(&'a self, row: usize, column: usize, separator: &str) -> Option<Vec<T>>
+    pub fn array<'a, T>(
+        &'a self,
+        row: usize,
+        column: usize,
+        separator: &str,
+    ) -> Result<Vec<T>, AccessError>
     where
         T: FromStr,
     {
-        match self.records.get(row)?.get(column)? {
+        let row = self.records.get(row).ok_or(AccessError::RowNotFound)?;
+        let column = row.get(column).ok_or(AccessError::ColumnNotFound)?;
+
+        match column {
             Value::String(string) => string
                 .split(separator)
                 .map(T::from_str)
                 .collect::<Result<Vec<T>, _>>()
-                .ok(),
-            _ => None,
+                .map_err(|_| AccessError::ConversionFailed),
+            _ => Err(AccessError::UnexpectedType),
         }
     }
 
@@ -235,12 +215,15 @@ impl Table {
         column: usize,
         pair_separator: &str,
         kv_separator: &str,
-    ) -> Option<HashMap<K, V>>
+    ) -> Result<HashMap<K, V>, AccessError>
     where
         K: FromStr + Eq + Hash,
         V: FromStr,
     {
-        match self.records.get(row)?.get(column)? {
+        let row = self.records.get(row).ok_or(AccessError::RowNotFound)?;
+        let column = row.get(column).ok_or(AccessError::ColumnNotFound)?;
+
+        match column {
             Value::String(string) => string
                 .split(pair_separator)
                 .map(|i| {
@@ -249,92 +232,17 @@ impl Table {
                     let v: Option<V> = split.next().map(|v| v.parse().ok()).flatten();
                     k.zip(v)
                 })
-                .collect(),
-            _ => None,
+                .collect::<Option<_>>()
+                .ok_or(AccessError::ConversionFailed),
+            _ => Err(AccessError::UnexpectedType),
         }
-    }
-}
-
-pub struct NamedTable {
-    pub name: String,
-    // mapping from id field to row index
-    id_to_index: HashMap<i32, usize>,
-    // mapping from field name to field index
-    field_to_index: HashMap<String, usize>,
-    pub table: Table,
-}
-
-impl NamedTable {
-    /// SAFETY panics if first column in record is not i32
-    pub fn from_definition(table: Table, def: &TableDefinition) -> Self {
-        let field_to_index: HashMap<String, usize> = def
-            .fields
-            .clone()
-            .into_iter()
-            .enumerate()
-            .map(|(i, n)| (n, i))
-            .collect();
-
-        let id_to_index: HashMap<i32, usize> = table
-            .records
-            .iter()
-            .enumerate()
-            .map(|(i, row)| {
-                (
-                    row.get(0)
-                        .map(Value::as_i32)
-                        .flatten()
-                        .expect("first column missing or not i32"),
-                    i,
-                )
-            })
-            .collect();
-
-        Self {
-            name: def.name.clone(),
-            field_to_index,
-            id_to_index,
-            table,
-        }
-    }
-
-    pub fn value<'a, T>(&'a self, row_id: i32, column_name: &str) -> Option<T>
-    where
-        T: TryFrom<&'a Value>,
-    {
-        let row_index = self.id_to_index.get(&row_id)?;
-        let column_index = self.field_to_index.get(column_name)?;
-        self.table.value(*row_index, *column_index)
-    }
-
-    pub fn array<'a, T>(&'a self, row_id: i32, column_name: &str, separator: &str) -> Option<Vec<T>>
-    where
-        T: FromStr,
-    {
-        let row_index = self.id_to_index.get(&row_id)?;
-        let column_index = self.field_to_index.get(column_name)?;
-        self.table.array(*row_index, *column_index, separator)
-    }
-
-    pub fn map<K, V>(
-        &self,
-        row_id: i32,
-        column_name: &str,
-        pair_separator: &str,
-        kv_separator: &str,
-    ) -> Option<HashMap<K, V>>
-    where
-        K: FromStr + Eq + Hash,
-        V: FromStr,
-    {
-        let row_index = self.id_to_index.get(&row_id)?;
-        let column_index = self.field_to_index.get(column_name)?;
-        self.table.map(*row_index, *column_index, pair_separator, kv_separator)
     }
 }
 
 #[test]
 fn adding() {
+    use std::io;
+
     // empty table
     let mut table = Table::new(1);
     let mut buffer = io::Cursor::new(Vec::new());
@@ -343,7 +251,10 @@ fn adding() {
 
     // record with invalid id
     let record = vec![Value::U8(0)];
-    assert!(matches!(table.add_record(record), Err(Error::InvalidID)));
+    assert!(matches!(
+        table.add_record(record),
+        Err(ParsingError::InvalidID)
+    ));
 
     // record with too many fields
     let mut record = vec![Value::I32(0)];
@@ -352,7 +263,7 @@ fn adding() {
     }
     assert!(matches!(
         table.add_record(record),
-        Err(Error::TooManyFields)
+        Err(ParsingError::TooManyFields)
     ));
 
     // too many rows
@@ -362,7 +273,7 @@ fn adding() {
     }
     assert!(matches!(
         table.add_record(vec![Value::I32(0)]),
-        Err(Error::TableIsFull)
+        Err(ParsingError::TableIsFull)
     ));
 
     // inconsistent row length
@@ -372,7 +283,7 @@ fn adding() {
         .unwrap();
     assert!(matches!(
         table.add_record(vec![Value::I32(0)]),
-        Err(Error::InconsistentLength)
+        Err(ParsingError::InconsistentLength)
     ))
 }
 
@@ -387,25 +298,23 @@ fn getters() {
         ])
         .unwrap();
 
-    assert_eq!(table.value::<i32>(0, 0), Some(-1));
-    assert_eq!(table.value::<String>(0, 0), Some("-1".into()));
+    assert_eq!(table.value::<i32>(0, 0), Ok(-1));
+    assert_eq!(table.value::<String>(0, 0), Ok("-1".into()));
 
     let array = vec![0, 1, 2];
-    assert_eq!(table.value::<i32>(0, 1), None);
-    assert_eq!(table.value::<String>(0, 1), Some("0,1,2".into()));
-    assert_eq!(table.array::<i32>(0, 1, ",").as_ref(), Some(&array));
+    assert_eq!(table.value::<i32>(0, 1), Err(AccessError::ConversionFailed));
+    assert_eq!(table.value::<String>(0, 1), Ok("0,1,2".into()));
+    assert_eq!(table.array::<i32>(0, 1, ",").as_ref(), Ok(&array));
 
     let mut map = HashMap::new();
     map.insert("a".into(), 0);
     map.insert("b".into(), 1);
     map.insert("c".into(), 2);
-    assert_eq!(
-        table.map::<String, i32>(0, 2, ",", ":").as_ref(),
-        Some(&map)
-    );
+    assert_eq!(table.map::<String, i32>(0, 2, ",", ":").as_ref(), Ok(&map));
 
-    assert_eq!(table.value::<i32>(1, 0), None);
+    assert_eq!(table.value::<i32>(1, 0), Err(AccessError::RowNotFound));
 
+    use crate::{definitions::TableDefinition, NamedTable};
     let def = TableDefinition {
         name: "Test".into(),
         fields: vec!["id".into(), "array".into(), "map".into()],
@@ -413,7 +322,7 @@ fn getters() {
     };
     let named = NamedTable::from_definition(table, &def);
 
-    assert_eq!(named.value::<i32>(-1, "id"), Some(-1));
-    assert_eq!(named.array::<i32>(-1, "array", ","), Some(array));
-    assert_eq!(named.map::<String, i32>(-1, "map", ",", ":"), Some(map));
+    assert_eq!(named.value::<i32>(-1, "id"), Ok(-1));
+    assert_eq!(named.vector::<i32>(-1, "array", ","), Ok(array));
+    assert_eq!(named.map::<String, i32>(-1, "map", ",", ":"), Ok(map));
 }

@@ -71,7 +71,7 @@ where
 {
     let in_path = in_path.as_ref();
     let mut file = fs::File::open(&in_path).expect("failed to open stc file");
-    let table = stc::table::Table::deserialize(&mut file).expect("failed to deserialize stc table");
+    let table = stc::Table::deserialize(&mut file).expect("failed to deserialize stc table");
 
     if table.records.len() == 0 {
         colored_println("   Empty", Color::Cyan, in_path.display());
