@@ -58,29 +58,3 @@ impl From<io::Error> for Error {
         Self::IO(err)
     }
 }
-
-impl PartialEq for Error {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Error::IO(lhs), Error::IO(rhs)) => lhs.kind() == rhs.kind(),
-            (Error::InvalidTableID(lhs), Error::InvalidTableID(rhs)) => lhs == rhs,
-            (Error::NoTableName, Error::NoTableName) => true,
-            (Error::NoTableColumnNames, Error::NoTableColumnNames) => true,
-            (Error::NoTableColumnTypes, Error::NoTableColumnTypes) => true,
-            (Error::InconsistentNamesAndTypesLength, Error::InconsistentNamesAndTypesLength) => true,
-            (Error::LastBlockSizeMismatch, Error::LastBlockSizeMismatch) => true,
-            (Error::TooManyRows, Error::TooManyRows) => true,
-            (Error::TooManyColumns, Error::TooManyColumns) => true,
-            (Error::InvalidRowID, Error::InvalidRowID) => true,
-            (Error::InconsistentRowLength, Error::InconsistentRowLength) => true,
-            (Error::StringTooBig, Error::StringTooBig) => true,
-            (Error::BookmarkOutOfBounds, Error::BookmarkOutOfBounds) => true,
-            (Error::RowNotFound, Error::RowNotFound) => true,
-            (Error::ColumnNotFound, Error::ColumnNotFound) => true,
-            (Error::ValueConversionFailed, Error::ValueConversionFailed) => true,
-            (Error::InvalidColumnType, Error::InvalidColumnType) => true,
-            (Error::MismatchedLength, Error::MismatchedLength) => true,
-            _ => false,
-        }
-    }
-}
