@@ -8,7 +8,7 @@ use std::{
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
-use crate::{AccessError, ParsingError, Value};
+use crate::{Error, Value};
 
 pub type Record = Vec<Value>;
 
@@ -26,7 +26,7 @@ impl Table {
         }
     }
 
-    pub fn deserialize<R>(reader: &mut R) -> Result<Self, ParsingError>
+    pub fn deserialize<R>(reader: &mut R) -> Result<Self, Error>
     where
         R: Read + Seek,
     {
@@ -66,30 +66,30 @@ impl Table {
 
         let cur_pos = reader.seek(SeekFrom::Current(0))?;
         if last_block_size != (cur_pos - 4) % 65536 {
-            return Err(ParsingError::LastBlockSizeMismatch);
+            return Err(Error::LastBlockSizeMismatch);
         }
 
         Ok(table)
     }
 
-    pub fn add_record(&mut self, record: Vec<Value>) -> Result<(), ParsingError> {
+    pub fn add_record(&mut self, record: Vec<Value>) -> Result<(), Error> {
         if self.records.len() >= u16::MAX.into() {
-            return Err(ParsingError::TableIsFull);
+            return Err(Error::TableIsFull);
         }
 
         if record.len() > u8::MAX.into() {
-            return Err(ParsingError::TooManyFields);
+            return Err(Error::TooManyFields);
         }
 
         // first value must be i32
         match record.first() {
             Some(Value::I32(_)) => {}
-            _ => return Err(ParsingError::InvalidID),
+            _ => return Err(Error::InvalidID),
         }
 
         if let Some(first) = self.records.first() {
             if first.len() != record.len() {
-                return Err(ParsingError::InconsistentLength);
+                return Err(Error::InconsistentLength);
             }
         }
 
@@ -98,7 +98,7 @@ impl Table {
         Ok(())
     }
 
-    pub fn serialize<W>(&self, writer: &mut W) -> Result<(), ParsingError>
+    pub fn serialize<W>(&self, writer: &mut W) -> Result<(), Error>
     where
         W: WriteBytesExt + Seek,
     {
@@ -110,7 +110,7 @@ impl Table {
             .records
             .len()
             .try_into()
-            .map_err(|_| ParsingError::TableIsFull)?;
+            .map_err(|_| Error::TableIsFull)?;
 
         writer.write_u16::<LittleEndian>(records_n)?;
 
@@ -124,7 +124,7 @@ impl Table {
         let fields_n: u8 = first
             .len()
             .try_into()
-            .map_err(|_| ParsingError::TooManyFields)?;
+            .map_err(|_| Error::TooManyFields)?;
         writer.write_u8(fields_n)?;
 
         // field types
@@ -144,11 +144,11 @@ impl Table {
         for (row_i, row) in self.records.iter().enumerate() {
             for (field_i, field) in row.iter().enumerate() {
                 if row_i % 100 == 0 && field_i == 0 {
-                    let id = field.as_i32().ok_or(ParsingError::InvalidID)?;
+                    let id = field.as_i32().ok_or(Error::InvalidID)?;
                     let pos: u32 = writer
                         .seek(SeekFrom::Current(0))?
                         .try_into()
-                        .map_err(|_| ParsingError::OutOfBounds)?;
+                        .map_err(|_| Error::OutOfBounds)?;
 
                     jump_table.push((id, pos));
                 }
@@ -176,14 +176,14 @@ impl Table {
         Ok(())
     }
 
-    pub fn value<'a, T>(&'a self, row: usize, column: usize) -> Result<T, AccessError>
+    pub fn value<'a, T>(&'a self, row: usize, column: usize) -> Result<T, Error>
     where
         T: TryFrom<&'a Value>,
     {
-        let row = self.records.get(row).ok_or(AccessError::RowNotFound)?;
-        let column = row.get(column).ok_or(AccessError::ColumnNotFound)?;
+        let row = self.records.get(row).ok_or(Error::RowNotFound)?;
+        let column = row.get(column).ok_or(Error::ColumnNotFound)?;
 
-        T::try_from(column).map_err(|_| AccessError::ConversionFailed)
+        T::try_from(column).map_err(|_| Error::ConversionFailed)
     }
 
     /// Convert `"v,v,v"` string into `Vec<T>`
@@ -192,20 +192,20 @@ impl Table {
         row: usize,
         column: usize,
         separator: &str,
-    ) -> Result<Vec<T>, AccessError>
+    ) -> Result<Vec<T>, Error>
     where
         T: FromStr,
     {
-        let row = self.records.get(row).ok_or(AccessError::RowNotFound)?;
-        let column = row.get(column).ok_or(AccessError::ColumnNotFound)?;
+        let row = self.records.get(row).ok_or(Error::RowNotFound)?;
+        let column = row.get(column).ok_or(Error::ColumnNotFound)?;
 
         match column {
             Value::String(string) => string
                 .split(separator)
                 .map(T::from_str)
                 .collect::<Result<Vec<T>, _>>()
-                .map_err(|_| AccessError::ConversionFailed),
-            _ => Err(AccessError::UnexpectedType),
+                .map_err(|_| Error::ConversionFailed),
+            _ => Err(Error::UnexpectedType),
         }
     }
 
@@ -215,13 +215,13 @@ impl Table {
         column: usize,
         pair_separator: &str,
         kv_separator: &str,
-    ) -> Result<HashMap<K, V>, AccessError>
+    ) -> Result<HashMap<K, V>, Error>
     where
         K: FromStr + Eq + Hash,
         V: FromStr,
     {
-        let row = self.records.get(row).ok_or(AccessError::RowNotFound)?;
-        let column = row.get(column).ok_or(AccessError::ColumnNotFound)?;
+        let row = self.records.get(row).ok_or(Error::RowNotFound)?;
+        let column = row.get(column).ok_or(Error::ColumnNotFound)?;
 
         match column {
             Value::String(string) => string
@@ -233,8 +233,8 @@ impl Table {
                     k.zip(v)
                 })
                 .collect::<Option<_>>()
-                .ok_or(AccessError::ConversionFailed),
-            _ => Err(AccessError::UnexpectedType),
+                .ok_or(Error::ConversionFailed),
+            _ => Err(Error::UnexpectedType),
         }
     }
 }
@@ -253,7 +253,7 @@ fn adding() {
     let record = vec![Value::U8(0)];
     assert!(matches!(
         table.add_record(record),
-        Err(ParsingError::InvalidID)
+        Err(Error::InvalidID)
     ));
 
     // record with too many fields
@@ -263,7 +263,7 @@ fn adding() {
     }
     assert!(matches!(
         table.add_record(record),
-        Err(ParsingError::TooManyFields)
+        Err(Error::TooManyFields)
     ));
 
     // too many rows
@@ -273,7 +273,7 @@ fn adding() {
     }
     assert!(matches!(
         table.add_record(vec![Value::I32(0)]),
-        Err(ParsingError::TableIsFull)
+        Err(Error::TableIsFull)
     ));
 
     // inconsistent row length
@@ -283,7 +283,7 @@ fn adding() {
         .unwrap();
     assert!(matches!(
         table.add_record(vec![Value::I32(0)]),
-        Err(ParsingError::InconsistentLength)
+        Err(Error::InconsistentLength)
     ))
 }
 
@@ -302,7 +302,7 @@ fn getters() {
     assert_eq!(table.value::<String>(0, 0), Ok("-1".into()));
 
     let array = vec![0, 1, 2];
-    assert_eq!(table.value::<i32>(0, 1), Err(AccessError::ConversionFailed));
+    assert_eq!(table.value::<i32>(0, 1), Err(Error::ConversionFailed));
     assert_eq!(table.value::<String>(0, 1), Ok("0,1,2".into()));
     assert_eq!(table.array::<i32>(0, 1, ",").as_ref(), Ok(&array));
 
@@ -312,7 +312,7 @@ fn getters() {
     map.insert("c".into(), 2);
     assert_eq!(table.map::<String, i32>(0, 2, ",", ":").as_ref(), Ok(&map));
 
-    assert_eq!(table.value::<i32>(1, 0), Err(AccessError::RowNotFound));
+    assert_eq!(table.value::<i32>(1, 0), Err(Error::RowNotFound));
 
     use crate::{definitions::TableDefinition, NamedTable};
     let def = TableDefinition {

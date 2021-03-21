@@ -1,6 +1,6 @@
 use std::{collections::HashMap, convert::TryFrom, hash::Hash, str::FromStr};
 
-use crate::{definitions::TableDefinition, table::Table, AccessError, Value};
+use crate::{Error, Value, definitions::TableDefinition, table::Table};
 
 pub struct NamedTable {
     pub name: String,
@@ -45,18 +45,18 @@ impl NamedTable {
         }
     }
 
-    pub fn value<'a, T>(&'a self, row_id: i32, column_name: &str) -> Result<T, AccessError>
+    pub fn value<'a, T>(&'a self, row_id: i32, column_name: &str) -> Result<T, Error>
     where
         T: TryFrom<&'a Value>,
     {
         let row_index = self
             .id_to_index
             .get(&row_id)
-            .ok_or(AccessError::RowNotFound)?;
+            .ok_or(Error::RowNotFound)?;
         let column_index = self
             .field_to_index
             .get(column_name)
-            .ok_or(AccessError::ColumnNotFound)?;
+            .ok_or(Error::ColumnNotFound)?;
         self.table.value(*row_index, *column_index)
     }
 
@@ -66,14 +66,14 @@ impl NamedTable {
         column_name: &str,
         separator: &str,
         length: usize,
-    ) -> Result<Vec<T>, AccessError>
+    ) -> Result<Vec<T>, Error>
     where
         T: FromStr,
     {
         let ret = self.vector(row_id, column_name, separator)?;
 
         if ret.len() != length {
-            Err(AccessError::MismatchedLength)
+            Err(Error::MismatchedLength)
         } else {
             Ok(ret)
         }
@@ -84,18 +84,18 @@ impl NamedTable {
         row_id: i32,
         column_name: &str,
         separator: &str,
-    ) -> Result<Vec<T>, AccessError>
+    ) -> Result<Vec<T>, Error>
     where
         T: FromStr,
     {
         let row_index = self
             .id_to_index
             .get(&row_id)
-            .ok_or(AccessError::RowNotFound)?;
+            .ok_or(Error::RowNotFound)?;
         let column_index = self
             .field_to_index
             .get(column_name)
-            .ok_or(AccessError::ColumnNotFound)?;
+            .ok_or(Error::ColumnNotFound)?;
         self.table.array(*row_index, *column_index, separator)
     }
 
@@ -105,7 +105,7 @@ impl NamedTable {
         column_name: &str,
         pair_separator: &str,
         kv_separator: &str,
-    ) -> Result<HashMap<K, V>, AccessError>
+    ) -> Result<HashMap<K, V>, Error>
     where
         K: FromStr + Eq + Hash,
         V: FromStr,
@@ -113,11 +113,11 @@ impl NamedTable {
         let row_index = self
             .id_to_index
             .get(&row_id)
-            .ok_or(AccessError::RowNotFound)?;
+            .ok_or(Error::RowNotFound)?;
         let column_index = self
             .field_to_index
             .get(column_name)
-            .ok_or(AccessError::ColumnNotFound)?;
+            .ok_or(Error::ColumnNotFound)?;
         self.table
             .map(*row_index, *column_index, pair_separator, kv_separator)
     }
