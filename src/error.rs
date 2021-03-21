@@ -49,6 +49,8 @@ pub enum Error {
 
     /// The length of resulting array does not match the requested length
     MismatchedLength,
+
+    // ! don't forget to add new variants to PartialEq
 }
 
 impl From<io::Error> for Error {
@@ -60,8 +62,25 @@ impl From<io::Error> for Error {
 impl PartialEq for Error {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Error::IO(lhs), Error::IO(rhs)) => lhs.kind().eq(&rhs.kind()),
-            (lhs, rhs) => lhs.eq(rhs),
+            (Error::IO(lhs), Error::IO(rhs)) => lhs.kind() == rhs.kind(),
+            (Error::InvalidTableID(lhs), Error::InvalidTableID(rhs)) => lhs == rhs,
+            (Error::NoTableName, Error::NoTableName) => true,
+            (Error::NoTableColumnNames, Error::NoTableColumnNames) => true,
+            (Error::NoTableColumnTypes, Error::NoTableColumnTypes) => true,
+            (Error::InconsistentNamesAndTypesLength, Error::InconsistentNamesAndTypesLength) => true,
+            (Error::LastBlockSizeMismatch, Error::LastBlockSizeMismatch) => true,
+            (Error::TooManyRows, Error::TooManyRows) => true,
+            (Error::TooManyColumns, Error::TooManyColumns) => true,
+            (Error::InvalidRowID, Error::InvalidRowID) => true,
+            (Error::InconsistentRowLength, Error::InconsistentRowLength) => true,
+            (Error::StringTooBig, Error::StringTooBig) => true,
+            (Error::BookmarkOutOfBounds, Error::BookmarkOutOfBounds) => true,
+            (Error::RowNotFound, Error::RowNotFound) => true,
+            (Error::ColumnNotFound, Error::ColumnNotFound) => true,
+            (Error::ValueConversionFailed, Error::ValueConversionFailed) => true,
+            (Error::InvalidColumnType, Error::InvalidColumnType) => true,
+            (Error::MismatchedLength, Error::MismatchedLength) => true,
+            _ => false,
         }
     }
 }
