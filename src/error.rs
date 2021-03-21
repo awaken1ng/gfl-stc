@@ -1,13 +1,25 @@
-use std::io;
+use std::{io, num::ParseIntError};
 
 #[derive(Debug)]
 pub enum Error {
     IO(io::Error),
 
-    // # deserialization
+    // # DEFINITIONS
+    InvalidTableID(ParseIntError),
+
+    NoTableName,
+
+    NoTableColumnNames,
+
+    NoTableColumnTypes,
+
+    /// Column names and types lengths do not match
+    InconsistentNamesAndTypesLength,
+
+    // # DESERIALIZATION
     LastBlockSizeMismatch,
 
-    // # adding rows, serialization
+    // # ADDING ROWS, SERIALIZATION
     /// Rows reached max capacity
     TooManyRows,
 
@@ -26,14 +38,14 @@ pub enum Error {
     /// Bookmark out of bounds due to 32-bit limit
     BookmarkOutOfBounds,
 
-    // # access
+    // # ACCESS
     RowNotFound,
 
     ColumnNotFound,
 
-    ConversionFailed,
+    ValueConversionFailed,
 
-    UnexpectedType,
+    InvalidColumnType,
 
     /// The length of resulting array does not match the requested length
     MismatchedLength,

@@ -1,3 +1,4 @@
+use crate::Error;
 use std::collections::HashMap;
 
 #[derive(Debug, PartialEq)]
@@ -8,16 +9,6 @@ pub struct TableDefinition {
 }
 
 pub type TableDefinitions = HashMap<u16, TableDefinition>;
-
-#[derive(Debug)]
-pub enum Error {
-    NoID,
-    InvalidID(std::num::ParseIntError),
-    NoName,
-    NoColumnNames,
-    NoColumnTypes,
-    ColumnNamesAndTypesMismatch,
-}
 
 pub fn parse(
     // path: Option<String>
@@ -34,25 +25,25 @@ pub fn parse(
         let mut line = line.split(';');
         let id = line
             .next()
-            .ok_or(Error::NoID)?
+            .unwrap() // SAFETY split on string always returns at least one item
             .parse()
-            .map_err(Error::InvalidID)?;
-        let name = line.next().ok_or(Error::NoName)?.to_owned();
+            .map_err(Error::InvalidTableID)?;
+        let name = line.next().ok_or(Error::NoTableName)?.to_owned();
         let columns: Vec<String> = line
             .next()
-            .ok_or(Error::NoColumnNames)?
+            .ok_or(Error::NoTableColumnNames)?
             .split(',')
             .map(String::from)
             .collect();
         let types: Vec<String> = line
             .next()
-            .ok_or(Error::NoColumnTypes)?
+            .ok_or(Error::NoTableColumnTypes)?
             .split(',')
             .map(String::from)
             .collect();
 
         if columns.len() != types.len() {
-            return Err(Error::ColumnNamesAndTypesMismatch);
+            return Err(Error::InconsistentNamesAndTypesLength);
         }
 
         definitions.insert(

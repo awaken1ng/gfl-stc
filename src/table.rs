@@ -183,7 +183,7 @@ impl Table {
         let row = self.rows.get(row).ok_or(Error::RowNotFound)?;
         let column = row.get(column).ok_or(Error::ColumnNotFound)?;
 
-        T::try_from(column).map_err(|_| Error::ConversionFailed)
+        T::try_from(column).map_err(|_| Error::ValueConversionFailed)
     }
 
     /// Convert `"v,v,v"` string into `Vec<T>`
@@ -204,8 +204,8 @@ impl Table {
                 .split(separator)
                 .map(T::from_str)
                 .collect::<Result<Vec<T>, _>>()
-                .map_err(|_| Error::ConversionFailed),
-            _ => Err(Error::UnexpectedType),
+                .map_err(|_| Error::ValueConversionFailed),
+            _ => Err(Error::InvalidColumnType),
         }
     }
 
@@ -233,8 +233,8 @@ impl Table {
                     k.zip(v)
                 })
                 .collect::<Option<_>>()
-                .ok_or(Error::ConversionFailed),
-            _ => Err(Error::UnexpectedType),
+                .ok_or(Error::ValueConversionFailed),
+            _ => Err(Error::InvalidColumnType),
         }
     }
 }
@@ -302,7 +302,7 @@ fn getters() {
     assert_eq!(table.value::<String>(0, 0), Ok("-1".into()));
 
     let array = vec![0, 1, 2];
-    assert_eq!(table.value::<i32>(0, 1), Err(Error::ConversionFailed));
+    assert_eq!(table.value::<i32>(0, 1), Err(Error::ValueConversionFailed));
     assert_eq!(table.value::<String>(0, 1), Ok("0,1,2".into()));
     assert_eq!(table.array::<i32>(0, 1, ",").as_ref(), Ok(&array));
 
