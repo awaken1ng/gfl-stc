@@ -96,7 +96,7 @@ impl NamedTable {
             .column_to_index
             .get(column_name)
             .ok_or(Error::ColumnNotFound)?;
-        self.table.array(*row_index, *column_index, separator)
+        self.table.vector(*row_index, *column_index, separator)
     }
 
     pub fn map<K, V>(

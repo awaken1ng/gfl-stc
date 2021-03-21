@@ -187,7 +187,7 @@ impl Table {
     }
 
     /// Convert `"v,v,v"` string into `Vec<T>`
-    pub fn array<T>(
+    pub fn vector<T>(
         &self,
         row: usize,
         column: usize,
@@ -303,7 +303,7 @@ fn getters() {
 
     assert!(matches!(table.value::<i32>(0, 1), Err(Error::ValueConversionFailed)));
     assert!(matches!(table.value::<String>(0, 1).as_deref(), Ok("0,1,2")));
-    assert!(matches!(table.array::<i32>(0, 1, ",").as_deref(), Ok(&[0, 1, 2])));
+    assert!(matches!(table.vector::<i32>(0, 1, ",").as_deref(), Ok(&[0, 1, 2])));
 
     let mut map = HashMap::new();
     map.insert("a".into(), 0);
