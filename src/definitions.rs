@@ -3,7 +3,7 @@ use std::collections::HashMap;
 #[derive(Debug, PartialEq)]
 pub struct TableDefinition {
     pub name: String,
-    pub fields: Vec<String>,
+    pub columns: Vec<String>,
     pub types: Vec<String>,
 }
 
@@ -14,9 +14,9 @@ pub enum Error {
     NoID,
     InvalidID(std::num::ParseIntError),
     NoName,
-    NoFieldNames,
-    NoFieldTypes,
-    FieldNamesAndTypesMismatch,
+    NoColumnNames,
+    NoColumnTypes,
+    ColumnNamesAndTypesMismatch,
 }
 
 pub fn parse(
@@ -38,28 +38,28 @@ pub fn parse(
             .parse()
             .map_err(Error::InvalidID)?;
         let name = line.next().ok_or(Error::NoName)?.to_owned();
-        let fields: Vec<String> = line
+        let columns: Vec<String> = line
             .next()
-            .ok_or(Error::NoFieldNames)?
+            .ok_or(Error::NoColumnNames)?
             .split(',')
             .map(String::from)
             .collect();
         let types: Vec<String> = line
             .next()
-            .ok_or(Error::NoFieldTypes)?
+            .ok_or(Error::NoColumnTypes)?
             .split(',')
             .map(String::from)
             .collect();
 
-        if fields.len() != types.len() {
-            return Err(Error::FieldNamesAndTypesMismatch);
+        if columns.len() != types.len() {
+            return Err(Error::ColumnNamesAndTypesMismatch);
         }
 
         definitions.insert(
             id,
             TableDefinition {
                 name,
-                fields,
+                columns,
                 types,
             },
         );
@@ -77,7 +77,7 @@ fn test() {
     "#;
 
     let mut parsed_defs = HashMap::new();
-    let fields: Vec<String> = vec!["col_1", "col_2"]
+    let columns: Vec<String> = vec!["col_1", "col_2"]
         .into_iter()
         .map(String::from)
         .collect();
@@ -86,7 +86,7 @@ fn test() {
         5000,
         TableDefinition {
             name: "table_1".to_owned(),
-            fields: fields.clone(),
+            columns: columns.clone(),
             types: types.clone(),
         },
     );
@@ -94,7 +94,7 @@ fn test() {
         5001,
         TableDefinition {
             name: "table_2".to_owned(),
-            fields,
+            columns,
             types,
         },
     );

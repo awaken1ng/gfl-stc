@@ -4,18 +4,18 @@ use crate::{Error, Value, definitions::TableDefinition, table::Table};
 
 pub struct NamedTable {
     pub name: String,
-    // mapping from id field to row index
+    // mapping from id column to row index
     id_to_index: HashMap<i32, usize>,
-    // mapping from field name to field index
-    field_to_index: HashMap<String, usize>,
+    // mapping from column name to column index
+    column_to_index: HashMap<String, usize>,
     pub table: Table,
 }
 
 impl NamedTable {
-    /// SAFETY panics if first column in record is not i32
+    /// SAFETY panics if first column in row is not i32
     pub fn from_definition(table: Table, def: &TableDefinition) -> Self {
-        let field_to_index: HashMap<String, usize> = def
-            .fields
+        let column_to_index: HashMap<String, usize> = def
+            .columns
             .clone()
             .into_iter()
             .enumerate()
@@ -23,7 +23,7 @@ impl NamedTable {
             .collect();
 
         let id_to_index: HashMap<i32, usize> = table
-            .records
+            .rows
             .iter()
             .enumerate()
             .map(|(i, row)| {
@@ -39,7 +39,7 @@ impl NamedTable {
 
         Self {
             name: def.name.clone(),
-            field_to_index,
+            column_to_index,
             id_to_index,
             table,
         }
@@ -54,7 +54,7 @@ impl NamedTable {
             .get(&row_id)
             .ok_or(Error::RowNotFound)?;
         let column_index = self
-            .field_to_index
+            .column_to_index
             .get(column_name)
             .ok_or(Error::ColumnNotFound)?;
         self.table.value(*row_index, *column_index)
@@ -93,7 +93,7 @@ impl NamedTable {
             .get(&row_id)
             .ok_or(Error::RowNotFound)?;
         let column_index = self
-            .field_to_index
+            .column_to_index
             .get(column_name)
             .ok_or(Error::ColumnNotFound)?;
         self.table.array(*row_index, *column_index, separator)
@@ -115,7 +115,7 @@ impl NamedTable {
             .get(&row_id)
             .ok_or(Error::RowNotFound)?;
         let column_index = self
-            .field_to_index
+            .column_to_index
             .get(column_name)
             .ok_or(Error::ColumnNotFound)?;
         self.table

@@ -26,7 +26,7 @@ After completing the download, the archive is placed at `<internal storage>/Andr
     |  id   |  lbs  |  rows |
     +---+---+---+---+---+---+
     +---+===================+
-    | f |    field types    |
+    | c |    column types   |
     +---+===================+
     +=======================+
     |       jump table      |
@@ -39,8 +39,8 @@ where:
 - `id` is a `u16` integer representing ID of this table, usually matches the file name, e.g. `5000.stc` will have ID of 5000
 - `lbs`, is a `u16` length of the last 65536 byte block, not counting `id` and itself
 - `rows` is a `u16` number of rows in this table
-- `f` is a `u8` number of fields in a row
-- `field types` is a sequence of `u8` integers with `f` items, each value represents field type in a row as follows:
+- `c` is a `u8` number of columns in a row
+- `column types` is a sequence of `u8` integers with `c` length, each value represents column type in a row as follows:
     - 1 => `i8`
     - 2 => `u8`
     - 3 => `i16`
@@ -58,13 +58,13 @@ where:
         +---+---+---+======|
         ```
         where `a` is `is_ascii` flag, `str` is ASCII or UTF-8 encoded
-- `jump table` is a sequence of two `i32` and `u32` integers (`record_id` and absolute `offset`) of every 100th record starting with first record (with 0-based indexing: 0th, 100th, 200th, etc)
-- `data` is a sequence of `rows`, each row have `f` fields
+- `jump table` is a sequence of two `i32` and `u32` integers (`row_id` and absolute `offset`) of every 100th row starting with first row (with 0-based indexing: 0th, 100th, 200th, etc)
+- `data` is a sequence of `rows`, each row have `c` columns
 
 *※ Little-endian ordering is used*
 
 ## Table definitions
-STC tables themselves don't define their name or field names, a way to acquire them is to dump headers using [il2cpp dumper](https://github.com/Perfare/Il2CppDumper).
+STC tables themselves don't define their name or column names, a way to acquire them is to dump headers using [il2cpp dumper](https://github.com/Perfare/Il2CppDumper).
 
 il2cpp metadata is encrypted, method unknown, use [GameGuardian](https://gameguardian.net/download) to dump memory and acquire decrypted file.
 
@@ -74,7 +74,7 @@ il2cpp metadata is encrypted, method unknown, use [GameGuardian](https://gamegua
 
 After dumping headers:
 - look for `CmdDef` enum to find table names
-- look for classes starting with `Stc` in the name to find field names
+- look for classes starting with `Stc` in the name to find column names
 
 
 # `catchdata.dat`

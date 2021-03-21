@@ -32,7 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if files.is_empty() {
         println!("Usage: [--def path] [--del] files");
         println!("Options:");
-        println!("    --def    Path to table definitions to pull field names from");
+        println!("    --def    Path to table definitions to pull column names from");
         println!("    --del    Delete input file after processing");
         return Ok(());
     }
@@ -73,7 +73,7 @@ where
     let mut file = fs::File::open(&in_path).expect("failed to open stc file");
     let table = stc::Table::deserialize(&mut file).expect("failed to deserialize stc table");
 
-    if table.records.is_empty() {
+    if table.rows.is_empty() {
         colored_println("   Empty", Color::Cyan, in_path.display());
         return;
     }
@@ -91,35 +91,35 @@ where
         .from_path(out_path)
         .expect("failed to open file for writing");
 
-    let (field_names, field_types): (Vec<String>, Vec<String>) = table
-        .records
+    let (column_names, column_types): (Vec<String>, Vec<String>) = table
+        .rows
         .first()
         .unwrap() // SAFETY checked earlier
         .iter()
         .enumerate()
         .map(|(i, v)| {
-            let field_name = def
-                .map(|d| d.fields.get(i).map(ToOwned::to_owned))
+            let column_name = def
+                .map(|d| d.columns.get(i).map(ToOwned::to_owned))
                 .flatten()
                 .unwrap_or(format!("col_{}", i));
 
-            (field_name, v.type_as_string())
+            (column_name, v.type_as_string())
         })
         .unzip();
     writer
-        .write_record(&field_names)
-        .expect("failed to write field names");
+        .write_record(&column_names)
+        .expect("failed to write column names");
     writer
-        .write_record(&field_types)
-        .expect("failed to write field types");
+        .write_record(&column_types)
+        .expect("failed to write column types");
 
-    for record in table.records.iter() {
-        let stringified = record.iter().map(|col| match col {
+    for row in table.rows.iter() {
+        let stringified = row.iter().map(|col| match col {
             stc::Value::String(string) => string.replace("\r", "\\r").replace("\n", "\\n"),
             other => other.to_string(),
         });
         writer
             .write_record(stringified)
-            .expect("failed to write a record");
+            .expect("failed to write a row");
     }
 }

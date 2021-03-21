@@ -10,19 +10,19 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
 use crate::{Error, Value};
 
-pub type Record = Vec<Value>;
+pub type Row = Vec<Value>;
 
 #[derive(Debug, Clone)]
 pub struct Table {
     pub id: u16,
-    pub records: Vec<Record>,
+    pub rows: Vec<Row>,
 }
 
 impl Table {
     pub fn new(id: u16) -> Self {
         Self {
             id,
-            records: Vec::new(),
+            rows: Vec::new(),
         }
     }
 
@@ -40,11 +40,11 @@ impl Table {
             return Ok(table);
         }
 
-        let fields: usize = reader.read_u8()?.into();
-        let mut field_types = Vec::with_capacity(fields);
-        for _ in 0..fields {
+        let columns: usize = reader.read_u8()?.into();
+        let mut column_types = Vec::with_capacity(columns);
+        for _ in 0..columns {
             let t = reader.read_u8()?;
-            field_types.push(t);
+            column_types.push(t);
         }
 
         // read jump table
@@ -55,13 +55,13 @@ impl Table {
         reader.seek(SeekFrom::Start(first_row_offset))?;
 
         for _ in 0..rows {
-            let mut row = Vec::with_capacity(fields);
+            let mut row = Vec::with_capacity(columns);
 
-            for t in &field_types {
+            for t in &column_types {
                 row.push(Value::read(*t, reader)?);
             }
 
-            table.records.push(row);
+            table.rows.push(row);
         }
 
         let cur_pos = reader.seek(SeekFrom::Current(0))?;
@@ -72,28 +72,28 @@ impl Table {
         Ok(table)
     }
 
-    pub fn add_record(&mut self, record: Vec<Value>) -> Result<(), Error> {
-        if self.records.len() >= u16::MAX.into() {
-            return Err(Error::TableIsFull);
+    pub fn add_row(&mut self, row: Vec<Value>) -> Result<(), Error> {
+        if self.rows.len() >= u16::MAX.into() {
+            return Err(Error::TooManyRows);
         }
 
-        if record.len() > u8::MAX.into() {
-            return Err(Error::TooManyFields);
+        if row.len() > u8::MAX.into() {
+            return Err(Error::TooManyColumns);
         }
 
         // first value must be i32
-        match record.first() {
+        match row.first() {
             Some(Value::I32(_)) => {}
-            _ => return Err(Error::InvalidID),
+            _ => return Err(Error::InvalidRowID),
         }
 
-        if let Some(first) = self.records.first() {
-            if first.len() != record.len() {
-                return Err(Error::InconsistentLength);
+        if let Some(first) = self.rows.first() {
+            if first.len() != row.len() {
+                return Err(Error::InconsistentRowLength);
             }
         }
 
-        self.records.push(record);
+        self.rows.push(row);
 
         Ok(())
     }
@@ -106,34 +106,34 @@ impl Table {
 
         writer.write_u16::<LittleEndian>(2)?; // lbs placeholder, current position
 
-        let records_n = self
-            .records
+        let rows_n = self
+            .rows
             .len()
             .try_into()
-            .map_err(|_| Error::TableIsFull)?;
+            .map_err(|_| Error::TooManyRows)?;
 
-        writer.write_u16::<LittleEndian>(records_n)?;
+        writer.write_u16::<LittleEndian>(rows_n)?;
 
-        if self.records.is_empty() {
+        if self.rows.is_empty() {
             return Ok(());
         }
 
         // SAFETY checked above
-        let first = self.records.first().unwrap();
+        let first = self.rows.first().unwrap();
 
-        let fields_n: u8 = first
+        let columns_n: u8 = first
             .len()
             .try_into()
-            .map_err(|_| Error::TooManyFields)?;
-        writer.write_u8(fields_n)?;
+            .map_err(|_| Error::TooManyColumns)?;
+        writer.write_u8(columns_n)?;
 
-        // field types
+        // column types
         for v in first.iter() {
             writer.write_u8(v.type_as_u8())?;
         }
 
         // jump table placeholder
-        let jump_table_size = 1 + (self.records.len() / 100);
+        let jump_table_size = 1 + (self.rows.len() / 100);
         for _ in 0..jump_table_size {
             writer.write_i32::<LittleEndian>(0)?; // id
             writer.write_u32::<LittleEndian>(0)?; // offset
@@ -141,19 +141,19 @@ impl Table {
 
         let mut jump_table = Vec::with_capacity(jump_table_size);
 
-        for (row_i, row) in self.records.iter().enumerate() {
-            for (field_i, field) in row.iter().enumerate() {
-                if row_i % 100 == 0 && field_i == 0 {
-                    let id = field.as_i32().ok_or(Error::InvalidID)?;
+        for (row_i, row) in self.rows.iter().enumerate() {
+            for (column_i, column) in row.iter().enumerate() {
+                if row_i % 100 == 0 && column_i == 0 {
+                    let id = column.as_i32().ok_or(Error::InvalidRowID)?;
                     let pos: u32 = writer
                         .seek(SeekFrom::Current(0))?
                         .try_into()
-                        .map_err(|_| Error::OutOfBounds)?;
+                        .map_err(|_| Error::BookmarkOutOfBounds)?;
 
                     jump_table.push((id, pos));
                 }
 
-                field.serialize(writer)?;
+                column.serialize(writer)?;
             }
         }
 
@@ -164,8 +164,8 @@ impl Table {
         assert_eq!(jump_table.len(), jump_table_size);
 
         // seek to the start of the jump table
-        // id (2), lbs (2), rows_n (2), fields_n (1), field_types (fields_n)
-        writer.seek(SeekFrom::Start(7 + u64::from(fields_n)))?;
+        // id (2), lbs (2), rows_n (2), columns_n (1), column_types (columns_n)
+        writer.seek(SeekFrom::Start(7 + u64::from(columns_n)))?;
         for (id, offset) in jump_table {
             writer.write_i32::<LittleEndian>(id)?;
             writer.write_u32::<LittleEndian>(offset)?;
@@ -180,7 +180,7 @@ impl Table {
     where
         T: TryFrom<&'a Value>,
     {
-        let row = self.records.get(row).ok_or(Error::RowNotFound)?;
+        let row = self.rows.get(row).ok_or(Error::RowNotFound)?;
         let column = row.get(column).ok_or(Error::ColumnNotFound)?;
 
         T::try_from(column).map_err(|_| Error::ConversionFailed)
@@ -196,7 +196,7 @@ impl Table {
     where
         T: FromStr,
     {
-        let row = self.records.get(row).ok_or(Error::RowNotFound)?;
+        let row = self.rows.get(row).ok_or(Error::RowNotFound)?;
         let column = row.get(column).ok_or(Error::ColumnNotFound)?;
 
         match column {
@@ -220,7 +220,7 @@ impl Table {
         K: FromStr + Eq + Hash,
         V: FromStr,
     {
-        let row = self.records.get(row).ok_or(Error::RowNotFound)?;
+        let row = self.rows.get(row).ok_or(Error::RowNotFound)?;
         let column = row.get(column).ok_or(Error::ColumnNotFound)?;
 
         match column {
@@ -249,41 +249,41 @@ fn adding() {
     table.serialize(&mut buffer).unwrap();
     assert_eq!(buffer.get_ref(), &[1, 0, 2, 0, 0, 0]);
 
-    // record with invalid id
-    let record = vec![Value::U8(0)];
+    // row with invalid id
+    let row = vec![Value::U8(0)];
     assert!(matches!(
-        table.add_record(record),
-        Err(Error::InvalidID)
+        table.add_row(row),
+        Err(Error::InvalidRowID)
     ));
 
-    // record with too many fields
-    let mut record = vec![Value::I32(0)];
+    // row with too many columns
+    let mut row = vec![Value::I32(0)];
     for _ in 1..256 {
-        record.push(Value::U8(0));
+        row.push(Value::U8(0));
     }
     assert!(matches!(
-        table.add_record(record),
-        Err(Error::TooManyFields)
+        table.add_row(row),
+        Err(Error::TooManyColumns)
     ));
 
     // too many rows
     let mut table = Table::new(0);
     for _ in 0..65535 {
-        table.add_record(vec![Value::I32(0)]).unwrap();
+        table.add_row(vec![Value::I32(0)]).unwrap();
     }
     assert!(matches!(
-        table.add_record(vec![Value::I32(0)]),
-        Err(Error::TableIsFull)
+        table.add_row(vec![Value::I32(0)]),
+        Err(Error::TooManyRows)
     ));
 
     // inconsistent row length
     let mut table = Table::new(0);
     table
-        .add_record(vec![Value::I32(0), Value::I32(0)])
+        .add_row(vec![Value::I32(0), Value::I32(0)])
         .unwrap();
     assert!(matches!(
-        table.add_record(vec![Value::I32(0)]),
-        Err(Error::InconsistentLength)
+        table.add_row(vec![Value::I32(0)]),
+        Err(Error::InconsistentRowLength)
     ))
 }
 
@@ -291,7 +291,7 @@ fn adding() {
 fn getters() {
     let mut table = Table::new(1);
     table
-        .add_record(vec![
+        .add_row(vec![
             Value::I32(-1),
             Value::String("0,1,2".into()),
             Value::String("a:0,b:1,c:2".into()),
@@ -317,7 +317,7 @@ fn getters() {
     use crate::{definitions::TableDefinition, NamedTable};
     let def = TableDefinition {
         name: "Test".into(),
-        fields: vec!["id".into(), "array".into(), "map".into()],
+        columns: vec!["id".into(), "array".into(), "map".into()],
         types: vec!["i32".into(), "string".into(), "string".into()],
     };
     let named = NamedTable::from_definition(table, &def);

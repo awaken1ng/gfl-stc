@@ -34,11 +34,11 @@ macro_rules! impl_as {
 }
 
 impl Value {
-    pub fn read<R>(field_type: u8, reader: &mut R) -> io::Result<Value>
+    pub fn read<R>(column_type: u8, reader: &mut R) -> io::Result<Value>
     where
         R: ReadBytesExt,
     {
-        let value = match field_type {
+        let value = match column_type {
             1 => Value::I8(reader.read_i8()?),
             2 => Value::U8(reader.read_u8()?),
             3 => Value::I16(reader.read_i16::<LittleEndian>()?),

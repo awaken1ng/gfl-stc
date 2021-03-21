@@ -7,24 +7,24 @@ pub enum Error {
     // # deserialization
     LastBlockSizeMismatch,
 
-    // # adding records, serialization
+    // # adding rows, serialization
     /// Rows reached max capacity
-    TableIsFull,
+    TooManyRows,
 
-    /// Row has more than 255 fields
-    TooManyFields,
+    /// Row has more than 255 columns
+    TooManyColumns,
 
-    /// First field in the record must always be `i32`
-    InvalidID,
+    /// First column in the row must always be `i32`
+    InvalidRowID,
 
     /// Inconsitent amount of colums in adding row
-    InconsistentLength,
+    InconsistentRowLength,
 
     /// String exceeded the 16-bit size limit
     StringTooBig,
 
     /// Bookmark out of bounds due to 32-bit limit
-    OutOfBounds,
+    BookmarkOutOfBounds,
 
     // # access
     RowNotFound,
