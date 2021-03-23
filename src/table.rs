@@ -2,7 +2,8 @@ use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
     hash::Hash,
-    io::{Read, Seek, SeekFrom},
+    io::{self, Read, Seek, SeekFrom},
+    ops::Deref,
     str::FromStr,
 };
 
@@ -24,6 +25,32 @@ impl Table {
             id,
             rows: Vec::new(),
         }
+    }
+
+    pub fn add_row(&mut self, row: Vec<Value>) -> Result<(), Error> {
+        if self.rows.len() >= u16::MAX.into() {
+            return Err(Error::TooManyRows);
+        }
+
+        if row.len() > u8::MAX.into() {
+            return Err(Error::TooManyColumns);
+        }
+
+        // first value must be i32
+        match row.first() {
+            Some(Value::I32(_)) => {}
+            _ => return Err(Error::InvalidRowID),
+        }
+
+        if let Some(first) = self.rows.first() {
+            if first.len() != row.len() {
+                return Err(Error::InconsistentRowLength);
+            }
+        }
+
+        self.rows.push(row);
+
+        Ok(())
     }
 
     pub fn deserialize<R>(reader: &mut R) -> Result<Self, Error>
@@ -72,32 +99,6 @@ impl Table {
         Ok(table)
     }
 
-    pub fn add_row(&mut self, row: Vec<Value>) -> Result<(), Error> {
-        if self.rows.len() >= u16::MAX.into() {
-            return Err(Error::TooManyRows);
-        }
-
-        if row.len() > u8::MAX.into() {
-            return Err(Error::TooManyColumns);
-        }
-
-        // first value must be i32
-        match row.first() {
-            Some(Value::I32(_)) => {}
-            _ => return Err(Error::InvalidRowID),
-        }
-
-        if let Some(first) = self.rows.first() {
-            if first.len() != row.len() {
-                return Err(Error::InconsistentRowLength);
-            }
-        }
-
-        self.rows.push(row);
-
-        Ok(())
-    }
-
     pub fn serialize<W>(&self, writer: &mut W) -> Result<(), Error>
     where
         W: WriteBytesExt + Seek,
@@ -106,11 +107,7 @@ impl Table {
 
         writer.write_u16::<LittleEndian>(2)?; // lbs placeholder, current position
 
-        let rows_n = self
-            .rows
-            .len()
-            .try_into()
-            .map_err(|_| Error::TooManyRows)?;
+        let rows_n = self.rows.len().try_into().map_err(|_| Error::TooManyRows)?;
 
         writer.write_u16::<LittleEndian>(rows_n)?;
 
@@ -121,10 +118,7 @@ impl Table {
         // SAFETY checked above
         let first = self.rows.first().unwrap();
 
-        let columns_n: u8 = first
-            .len()
-            .try_into()
-            .map_err(|_| Error::TooManyColumns)?;
+        let columns_n: u8 = first.len().try_into().map_err(|_| Error::TooManyColumns)?;
         writer.write_u8(columns_n)?;
 
         // column types
@@ -176,6 +170,118 @@ impl Table {
         Ok(())
     }
 
+    #[cfg(feature = "csv")]
+    /// Read the table from .csv, reader must start with column types
+    pub fn from_csv<R>(id: u16, reader: R) -> Result<Self, Error>
+    where
+        R: io::Read,
+    {
+        let mut reader = csv::ReaderBuilder::default()
+            .has_headers(false)
+            .from_reader(reader);
+
+        let mut types = csv::StringRecord::new();
+        reader.read_record(&mut types)?;
+        let types: Vec<&str> = types.iter().collect();
+
+        let mut table = Self {
+            id,
+            rows: Vec::new(),
+        };
+        for record in reader.records() {
+            let row = record?;
+            let row: Result<Vec<Value>, _> = row
+                .iter()
+                .enumerate()
+                .map(|(i, col)| {
+                    let col_type = types.get(i).ok_or(Error::InconsistentNamesAndTypesLength)?;
+                    match col_type.deref() {
+                        "i8" => col
+                            .parse()
+                            .map(Value::U8)
+                            .map_err(|_| Error::ValueConversionFailed),
+                        "u8" => col
+                            .parse()
+                            .map(Value::U8)
+                            .map_err(|_| Error::ValueConversionFailed),
+                        "i16" => col
+                            .parse()
+                            .map(Value::I16)
+                            .map_err(|_| Error::ValueConversionFailed),
+                        "u16" => col
+                            .parse()
+                            .map(Value::U16)
+                            .map_err(|_| Error::ValueConversionFailed),
+                        "i32" => col
+                            .parse()
+                            .map(Value::I32)
+                            .map_err(|_| Error::ValueConversionFailed),
+                        "u32" => col
+                            .parse()
+                            .map(Value::U32)
+                            .map_err(|_| Error::ValueConversionFailed),
+                        "i64" => col
+                            .parse()
+                            .map(Value::I64)
+                            .map_err(|_| Error::ValueConversionFailed),
+                        "u64" => col
+                            .parse()
+                            .map(Value::U64)
+                            .map_err(|_| Error::ValueConversionFailed),
+                        "f32" => col
+                            .parse()
+                            .map(Value::F32)
+                            .map_err(|_| Error::ValueConversionFailed),
+                        "f64" => col
+                            .parse()
+                            .map(Value::F64)
+                            .map_err(|_| Error::ValueConversionFailed),
+                        "string" => Ok(Value::String(col.to_owned())),
+                        _ => Err(Error::InvalidColumnType),
+                    }
+                })
+                .collect();
+            let row = row?;
+            table.add_row(row)?;
+        }
+
+        Ok(table)
+    }
+
+    #[cfg(feature = "csv")]
+    pub fn to_csv<W>(&self, writer: W, with_names: bool, with_types: bool) -> Result<W, Error>
+    where
+        W: io::Write,
+    {
+        if self.rows.is_empty() {
+            return Ok(writer);
+        }
+
+        let mut writer = csv::Writer::from_writer(writer);
+
+        let first = self.rows.first().unwrap(); // SAFETY checked earlier
+
+        if with_names {
+            let column_names = first.iter().enumerate().map(|(i, _)| format!("col-{}", i));
+            writer.write_record(column_names)?;
+        }
+
+        if with_types {
+            let column_types = first.iter().map(Value::type_as_string);
+            writer.write_record(column_types)?;
+        }
+
+        for row in self.rows.iter() {
+            let stringified = row.iter().map(ToString::to_string);
+            writer.write_record(stringified)?;
+        }
+
+        // SAFETY should not panic, unless second flush somehow fails
+        writer.flush()?;
+        let writer = writer.into_inner().unwrap();
+        Ok(writer)
+    }
+
     pub fn value<'a, T>(&'a self, row: usize, column: usize) -> Result<T, Error>
     where
         T: TryFrom<&'a Value>,
@@ -187,12 +293,7 @@ impl Table {
     }
 
     /// Convert `"v,v,v"` string into `Vec<T>`
-    pub fn vector<T>(
-        &self,
-        row: usize,
-        column: usize,
-        separator: &str,
-    ) -> Result<Vec<T>, Error>
+    pub fn vector<T>(&self, row: usize, column: usize, separator: &str) -> Result<Vec<T>, Error>
     where
         T: FromStr,
     {
@@ -251,20 +352,14 @@ fn adding() {
 
     // row with invalid id
     let row = vec![Value::U8(0)];
-    assert!(matches!(
-        table.add_row(row),
-        Err(Error::InvalidRowID)
-    ));
+    assert!(matches!(table.add_row(row), Err(Error::InvalidRowID)));
 
     // row with too many columns
     let mut row = vec![Value::I32(0)];
     for _ in 1..256 {
         row.push(Value::U8(0));
     }
-    assert!(matches!(
-        table.add_row(row),
-        Err(Error::TooManyColumns)
-    ));
+    assert!(matches!(table.add_row(row), Err(Error::TooManyColumns)));
 
     // too many rows
     let mut table = Table::new(0);
@@ -278,9 +373,7 @@ fn adding() {
 
     // inconsistent row length
     let mut table = Table::new(0);
-    table
-        .add_row(vec![Value::I32(0), Value::I32(0)])
-        .unwrap();
+    table.add_row(vec![Value::I32(0), Value::I32(0)]).unwrap();
     assert!(matches!(
         table.add_row(vec![Value::I32(0)]),
         Err(Error::InconsistentRowLength)
@@ -301,9 +394,18 @@ fn getters() {
     assert!(matches!(table.value::<i32>(0, 0), Ok(-1)));
     assert!(matches!(table.value::<String>(0, 0).as_deref(), Ok("-1")));
 
-    assert!(matches!(table.value::<i32>(0, 1), Err(Error::ValueConversionFailed)));
-    assert!(matches!(table.value::<String>(0, 1).as_deref(), Ok("0,1,2")));
-    assert!(matches!(table.vector::<i32>(0, 1, ",").as_deref(), Ok(&[0, 1, 2])));
+    assert!(matches!(
+        table.value::<i32>(0, 1),
+        Err(Error::ValueConversionFailed)
+    ));
+    assert!(matches!(
+        table.value::<String>(0, 1).as_deref(),
+        Ok("0,1,2")
+    ));
+    assert!(matches!(
+        table.vector::<i32>(0, 1, ",").as_deref(),
+        Ok(&[0, 1, 2])
+    ));
 
     let mut map = HashMap::new();
     map.insert("a".into(), 0);
@@ -323,10 +425,31 @@ fn getters() {
     let named = NamedTable::from_definition(table, &def);
 
     assert!(matches!(named.value::<i32>(-1, "id"), Ok(-1)));
-    assert!(matches!(named.vector::<i32>(-1, "array", ",").as_deref(), Ok(&[0, 1, 2])));
-    // assert_eq!(named.map::<String, i32>(-1, "map", ",", ":"), Ok(map));
-
+    assert!(matches!(
+        named.vector::<i32>(-1, "array", ",").as_deref(),
+        Ok(&[0, 1, 2])
+    ));
     if let Ok(ret) = named.map::<String, i32>(-1, "map", ",", ":") {
         assert!(ret == map);
     }
+}
+
+#[cfg(feature = "csv")]
+#[test]
+fn csv() {
+    use std::io::BufRead;
+
+    let csv = "id\ni32\n101";
+    let mut file = std::io::Cursor::new(csv);
+
+    let mut col_names = String::new();
+    file.read_line(&mut col_names).unwrap();
+    assert_eq!(col_names, "id\n");
+
+    let table = Table::from_csv(5000, file).unwrap();
+    assert_eq!(table.id, 5000);
+    assert_eq!(table.rows, vec![vec![Value::I32(101)]]);
+
+    let writer = table.to_csv(Vec::new(), false, true).unwrap();
+    assert_eq!("i32\n101\n", String::from_utf8(writer).unwrap());
 }

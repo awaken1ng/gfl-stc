@@ -1,6 +1,6 @@
-use std::{collections::HashMap, convert::TryFrom, hash::Hash, str::FromStr};
+use std::{collections::HashMap, convert::TryFrom, hash::Hash, io, str::FromStr};
 
-use crate::{Error, Value, definitions::TableDefinition, table::Table};
+use crate::{definitions::TableDefinition, table::Table, Error, Value};
 
 pub struct NamedTable {
     pub name: String,
@@ -45,14 +45,45 @@ impl NamedTable {
         }
     }
 
+    #[cfg(feature = "csv")]
+    /// Read the table from .csv, reader must start with column types
+    pub fn from_csv<R>(id: u16, reader: R, def: &TableDefinition) -> Result<Self, Error>
+    where
+        R: io::Read,
+    {
+        let table = Table::from_csv(id, reader)?;
+        Ok(Self::from_definition(table, def))
+    }
+
+    #[cfg(feature = "csv")]
+    pub fn to_csv<W>(&self, writer: W, with_names: bool, with_types: bool) -> Result<W, Error>
+    where
+        W: io::Write,
+    {
+        if self.table.rows.is_empty() {
+            return Ok(writer);
+        }
+
+        let mut writer = csv::Writer::from_writer(writer);
+
+        let first = self.table.rows.first().unwrap(); // SAFETY checked earlier
+
+        if with_names {
+            let column_names = first.iter().enumerate().map(|(i, _)| format!("col-{}", i));
+            writer.write_record(column_names)?;
+        }
+
+        writer.flush()?;
+        let writer = writer.into_inner().unwrap();
+
+        self.table.to_csv(writer, false, with_types)
+    }
+
     pub fn value<'a, T>(&'a self, row_id: i32, column_name: &str) -> Result<T, Error>
     where
         T: TryFrom<&'a Value>,
     {
-        let row_index = self
-            .id_to_index
-            .get(&row_id)
-            .ok_or(Error::RowNotFound)?;
+        let row_index = self.id_to_index.get(&row_id).ok_or(Error::RowNotFound)?;
         let column_index = self
             .column_to_index
             .get(column_name)
@@ -88,10 +119,7 @@ impl NamedTable {
     where
         T: FromStr,
     {
-        let row_index = self
-            .id_to_index
-            .get(&row_id)
-            .ok_or(Error::RowNotFound)?;
+        let row_index = self.id_to_index.get(&row_id).ok_or(Error::RowNotFound)?;
         let column_index = self
             .column_to_index
             .get(column_name)
@@ -110,10 +138,7 @@ impl NamedTable {
         K: FromStr + Eq + Hash,
         V: FromStr,
     {
-        let row_index = self
-            .id_to_index
-            .get(&row_id)
-            .ok_or(Error::RowNotFound)?;
+        let row_index = self.id_to_index.get(&row_id).ok_or(Error::RowNotFound)?;
         let column_index = self
             .column_to_index
             .get(column_name)

@@ -4,6 +4,9 @@ use std::{io, num::ParseIntError};
 pub enum Error {
     IO(io::Error),
 
+    #[cfg(feature = "csv")]
+    CSV(csv::Error),
+
     // # DEFINITIONS
     InvalidTableID(ParseIntError),
 
@@ -49,12 +52,17 @@ pub enum Error {
 
     /// The length of resulting array does not match the requested length
     MismatchedLength,
-
-    // ! don't forget to add new variants to PartialEq
 }
 
 impl From<io::Error> for Error {
     fn from(err: io::Error) -> Self {
         Self::IO(err)
+    }
+}
+
+#[cfg(feature = "csv")]
+impl From<csv::Error> for Error {
+    fn from(err: csv::Error) -> Self {
+        Self::CSV(err)
     }
 }

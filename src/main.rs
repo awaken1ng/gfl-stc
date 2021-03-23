@@ -71,7 +71,7 @@ where
 {
     let in_path = in_path.as_ref();
     let mut file = fs::File::open(&in_path).expect("failed to open stc file");
-    let table = stc::Table::deserialize(&mut file).expect("failed to deserialize stc table");
+    let mut table = stc::Table::deserialize(&mut file).expect("failed to deserialize stc table");
 
     if table.rows.is_empty() {
         colored_println("   Empty", Color::Cyan, in_path.display());
@@ -87,39 +87,26 @@ where
 
     colored_println(" Parsing", Color::Green, in_path.display());
 
-    let mut writer = csv::WriterBuilder::default()
-        .from_path(out_path)
+    // escape new lines
+    for row in table.rows.iter_mut() {
+        for col in row.iter_mut() {
+            if let stc::Value::String(string) = col {
+                let escaped = string.replace("\r", "\\r").replace("\n", "\\n");
+                *string = escaped;
+            }
+        }
+    }
+
+    let out = fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(out_path)
         .expect("failed to open file for writing");
 
-    let (column_names, column_types): (Vec<String>, Vec<String>) = table
-        .rows
-        .first()
-        .unwrap() // SAFETY checked earlier
-        .iter()
-        .enumerate()
-        .map(|(i, v)| {
-            let column_name = def
-                .map(|d| d.columns.get(i).map(ToOwned::to_owned))
-                .flatten()
-                .unwrap_or(format!("col_{}", i));
-
-            (column_name, v.type_as_string())
-        })
-        .unzip();
-    writer
-        .write_record(&column_names)
-        .expect("failed to write column names");
-    writer
-        .write_record(&column_types)
-        .expect("failed to write column types");
-
-    for row in table.rows.iter() {
-        let stringified = row.iter().map(|col| match col {
-            stc::Value::String(string) => string.replace("\r", "\\r").replace("\n", "\\n"),
-            other => other.to_string(),
-        });
-        writer
-            .write_record(stringified)
-            .expect("failed to write a row");
+    match def {
+        Some(def) => stc::NamedTable::from_definition(table, def).to_csv(out, true, true),
+        None => table.to_csv(out, true, true),
     }
+    .expect("failed to convert to csv");
 }

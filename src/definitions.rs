@@ -1,7 +1,7 @@
 use crate::Error;
 use std::collections::HashMap;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TableDefinition {
     pub name: String,
     pub columns: Vec<String>,

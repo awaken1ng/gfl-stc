@@ -7,7 +7,7 @@ use std::{
 
 use crate::Error;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     I8(i8),
     U8(u8),
