@@ -10,10 +10,7 @@ pub struct TableDefinition {
 
 pub type TableDefinitions = HashMap<u16, TableDefinition>;
 
-pub fn parse(
-    // path: Option<String>
-    contents: &str,
-) -> Result<TableDefinitions, Error> {
+pub fn parse(contents: &str) -> Result<TableDefinitions, Error> {
     let mut definitions = HashMap::new();
 
     for line in contents.lines() {
