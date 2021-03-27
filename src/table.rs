@@ -39,7 +39,7 @@ impl Table {
         // first value must be i32
         match row.first() {
             Some(Value::I32(_)) => {}
-            _ => return Err(Error::InvalidRowID),
+            _ => return Err(Error::InvalidRowId),
         }
 
         if let Some(first) = self.rows.first() {
@@ -138,7 +138,7 @@ impl Table {
         for (row_i, row) in self.rows.iter().enumerate() {
             for (column_i, column) in row.iter().enumerate() {
                 if row_i % 100 == 0 && column_i == 0 {
-                    let id = column.as_i32().ok_or(Error::InvalidRowID)?;
+                    let id = column.as_i32().ok_or(Error::InvalidRowId)?;
                     let pos: u32 = writer
                         .seek(SeekFrom::Current(0))?
                         .try_into()
@@ -352,7 +352,7 @@ fn adding() {
 
     // row with invalid id
     let row = vec![Value::U8(0)];
-    assert!(matches!(table.add_row(row), Err(Error::InvalidRowID)));
+    assert!(matches!(table.add_row(row), Err(Error::InvalidRowId)));
 
     // row with too many columns
     let mut row = vec![Value::I32(0)];

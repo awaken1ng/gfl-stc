@@ -24,7 +24,7 @@ pub fn parse(contents: &str) -> Result<TableDefinitions, Error> {
             .next()
             .unwrap() // SAFETY split on string always returns at least one item
             .parse()
-            .map_err(Error::InvalidTableID)?;
+            .map_err(Error::InvalidTableId)?;
         let name = line.next().ok_or(Error::NoTableName)?.to_owned();
         let columns: Vec<String> = line
             .next()

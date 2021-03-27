@@ -2,15 +2,15 @@ use std::{io, num::ParseIntError};
 
 #[derive(Debug)]
 pub enum Error {
-    IO(io::Error),
+    Io(io::Error),
 
     #[cfg(feature = "csv")]
-    CSV(csv::Error),
+    Csv(csv::Error),
 
     // # DEFINITIONS
     FirstColumnNotI32,
 
-    InvalidTableID(ParseIntError),
+    InvalidTableId(ParseIntError),
 
     NoTableName,
 
@@ -32,7 +32,7 @@ pub enum Error {
     TooManyColumns,
 
     /// First column in the row must always be `i32`
-    InvalidRowID,
+    InvalidRowId,
 
     /// Inconsitent amount of colums in adding row
     InconsistentRowLength,
@@ -58,13 +58,13 @@ pub enum Error {
 
 impl From<io::Error> for Error {
     fn from(err: io::Error) -> Self {
-        Self::IO(err)
+        Self::Io(err)
     }
 }
 
 #[cfg(feature = "csv")]
 impl From<csv::Error> for Error {
     fn from(err: csv::Error) -> Self {
-        Self::CSV(err)
+        Self::Csv(err)
     }
 }
