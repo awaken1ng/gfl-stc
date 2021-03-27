@@ -422,7 +422,7 @@ fn getters() {
         columns: vec!["id".into(), "array".into(), "map".into()],
         types: vec!["i32".into(), "string".into(), "string".into()],
     };
-    let named = NamedTable::from_definition(table, &def);
+    let named = NamedTable::from_definition(table, &def).unwrap();
 
     assert!(matches!(named.value::<i32>(-1, "id"), Ok(-1)));
     assert!(matches!(

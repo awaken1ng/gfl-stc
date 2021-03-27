@@ -8,6 +8,8 @@ pub enum Error {
     CSV(csv::Error),
 
     // # DEFINITIONS
+    FirstColumnNotI32,
+
     InvalidTableID(ParseIntError),
 
     NoTableName,

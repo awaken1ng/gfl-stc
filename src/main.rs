@@ -105,7 +105,9 @@ where
         .expect("failed to open file for writing");
 
     match def {
-        Some(def) => stc::NamedTable::from_definition(table, def).to_csv(out, true, true),
+        Some(def) => stc::NamedTable::from_definition(table, def)
+            .expect("failed to create named table")
+            .to_csv(out, true, true),
         None => table.to_csv(out, true, true),
     }
     .expect("failed to convert to csv");

@@ -12,8 +12,7 @@ pub struct NamedTable {
 }
 
 impl NamedTable {
-    /// SAFETY panics if first column in row is not i32
-    pub fn from_definition(table: Table, def: &TableDefinition) -> Self {
+    pub fn from_definition(table: Table, def: &TableDefinition) -> Result<Self, Error> {
         let column_to_index: HashMap<String, usize> = def
             .columns
             .clone()
@@ -22,27 +21,18 @@ impl NamedTable {
             .map(|(i, n)| (n, i))
             .collect();
 
-        let id_to_index: HashMap<i32, usize> = table
-            .rows
-            .iter()
-            .enumerate()
-            .map(|(i, row)| {
-                (
-                    row.get(0)
-                        .map(Value::as_i32)
-                        .flatten()
-                        .expect("first column missing or not i32"),
-                    i,
-                )
-            })
-            .collect();
+        let mut id_to_index = HashMap::new();
+        for (row_index, row) in table.rows.iter().enumerate() {
+            let row_id = row.get(0).map(Value::as_i32).flatten().ok_or(Error::ColumnNotFound)?;
+            id_to_index.insert(row_id, row_index);
+        }
 
-        Self {
+        Ok(Self {
             name: def.name.clone(),
             column_to_index,
             id_to_index,
             table,
-        }
+        })
     }
 
     #[cfg(feature = "csv")]
@@ -52,7 +42,8 @@ impl NamedTable {
         R: io::Read,
     {
         let table = Table::from_csv(id, reader)?;
-        Ok(Self::from_definition(table, def))
+        let named = Self::from_definition(table, def)?;
+        Ok(named)
     }
 
     #[cfg(feature = "csv")]
