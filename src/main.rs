@@ -73,17 +73,27 @@ where
     let mut file = fs::File::open(&in_path).expect("failed to open stc file");
     let mut table = stc::Table::deserialize(&mut file).expect("failed to deserialize stc table");
 
-    if table.rows.is_empty() {
-        colored_println("   Empty", Color::Cyan, in_path.display());
-        return;
-    }
-
     let def = defs.get(&table.id);
 
     let out_path = match def {
         Some(def) => in_path.with_file_name(format!("{}_{}.csv", table.id, def.name)),
         None => in_path.with_extension("csv"),
     };
+
+    if table.rows.is_empty() {
+        colored_println("   Empty", Color::Cyan, in_path.display());
+
+        // `to_csv` doesn't write headers if table is empty
+        if let Some(def) = def {
+            let mut out = csv::Writer::from_path(out_path).unwrap();
+
+            out.write_record(&def.columns).expect("failed to write column names");
+            out.write_record(&def.types).expect("failed to write column types");
+            out.flush().expect("failed to flush");
+        }
+
+        return;
+    }
 
     colored_println(" Parsing", Color::Green, in_path.display());
 
