@@ -127,7 +127,7 @@ impl Table {
         }
 
         // jump table placeholder
-        let jump_table_size = 1 + (self.rows.len() / 100);
+        let jump_table_size = (self.rows.len() + 99) / 100; // rounding up division by 100
         for _ in 0..jump_table_size {
             writer.write_i32::<LittleEndian>(0)?; // id
             writer.write_u32::<LittleEndian>(0)?; // offset
