@@ -57,10 +57,11 @@ impl NamedTable {
 
         let mut writer = csv::Writer::from_writer(writer);
 
-        let first = self.table.rows.first().unwrap(); // SAFETY checked earlier
-
         if with_names {
-            let column_names = first.iter().enumerate().map(|(i, _)| format!("col-{}", i));
+            let mut column_names: Vec<(String, usize)> = self.column_to_index.clone().into_iter().collect();
+            column_names.sort_by(|a, b| a.1.cmp(&b.1));
+            let column_names = column_names.into_iter().map(|(name, _index)| name);
+
             writer.write_record(column_names)?;
         }
 
