@@ -23,10 +23,12 @@ pub enum Value {
 }
 
 macro_rules! impl_as {
-    ($item:tt, $name:ident -> $type:ty) => {
+    ($name:ident -> $type:ty, $( $item:tt ),+ ) => {
         pub fn $name(&self) -> Option<$type> {
             match self {
-                Value::$item(v) => Some(*v),
+                $(
+                    Value::$item(v) => Some(<$type>::from(*v)),
+                )+
                 _ => None,
             }
         }
@@ -134,16 +136,19 @@ impl Value {
         .to_string()
     }
 
-    impl_as!(I8, as_i8 -> i8);
-    impl_as!(U8, as_u8 -> u8);
-    impl_as!(I16, as_i16 -> i16);
-    impl_as!(U16, as_u16 -> u16);
-    impl_as!(I32, as_i32 -> i32);
-    impl_as!(U32, as_u32 -> u32);
-    impl_as!(I64, as_i64 -> i64);
-    impl_as!(U64, as_u64 -> u64);
-    impl_as!(F32, as_f32 -> f32);
-    impl_as!(F64, as_f64 -> f64);
+    impl_as!(as_i8 -> i8, I8);
+    impl_as!(as_i16 -> i16, I16, I8, U8);
+    impl_as!(as_i32 -> i32, I32, I16, I8, U16, U8);
+    impl_as!(as_i64 -> i64, I64, I32, I16, I8, U32, U16, U8);
+
+    impl_as!(as_u8 -> u8, U8);
+    impl_as!(as_u16 -> u16, U16, U8);
+    impl_as!(as_u32 -> u32, U32, U16, U8);
+    impl_as!(as_u64 -> u64, U64, U32, U16, U8);
+
+    impl_as!(as_f32 -> f32, F32, I16, U16, I8, U8);
+    impl_as!(as_f64 -> f64, F64, F32, I32, U32, I16, U16, I8, U8);
+
     pub fn as_str(&self) -> Option<&str> {
         match self {
             Value::String(v) => Some(v),
