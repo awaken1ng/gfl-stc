@@ -1,4 +1,4 @@
-use std::{collections::HashMap, convert::TryFrom, hash::Hash, io, str::FromStr};
+use std::{collections::{HashMap, hash_map::Keys}, convert::TryFrom, hash::Hash, io, str::FromStr};
 
 use crate::{definitions::TableDefinition, table::Table, Error, Value};
 
@@ -69,6 +69,10 @@ impl NamedTable {
         let writer = writer.into_inner().unwrap();
 
         self.table.to_csv(writer, false, with_types)
+    }
+
+    pub fn row_ids(&self) -> Keys<i32, usize> {
+        self.id_to_index.keys()
     }
 
     pub fn value<'a, T>(&'a self, row_id: i32, column_name: &str) -> Result<T, Error>
