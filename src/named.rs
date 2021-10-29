@@ -1,11 +1,13 @@
-use std::{collections::{HashMap, hash_map::Keys}, convert::TryFrom, hash::Hash, io, str::FromStr};
+use std::{collections::HashMap, convert::TryFrom, hash::Hash, io, str::FromStr};
+
+use indexmap::{map::Keys, IndexMap};
 
 use crate::{definitions::TableDefinition, table::Table, Error, Value};
 
 pub struct NamedTable {
     pub name: String,
     // mapping from id column to row index
-    id_to_index: HashMap<i32, usize>,
+    id_to_index: IndexMap<i32, usize>,
     // mapping from column name to column index
     column_to_index: HashMap<String, usize>,
     pub table: Table,
@@ -21,7 +23,7 @@ impl NamedTable {
             .map(|(i, n)| (n, i))
             .collect();
 
-        let mut id_to_index = HashMap::new();
+        let mut id_to_index = IndexMap::new();
         for (row_index, row) in table.rows.iter().enumerate() {
             let row_id = row.get(0).map(Value::as_i32).flatten().ok_or(Error::ColumnNotFound)?;
             id_to_index.insert(row_id, row_index);
