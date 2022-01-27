@@ -1,0 +1,12 @@
+# https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[package]
+name = "stc2csv"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+stc = { path = "../stc", features = ["csv"] }
+termcolor = "^1.1"
+pico-args = { version = "^0.4", default-features = false }
+csv = "^1.1"
