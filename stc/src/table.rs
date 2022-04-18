@@ -115,7 +115,7 @@ impl Table {
             return Ok(());
         }
 
-        // SAFETY checked above
+        // PANIC checked above
         let first = self.rows.first().unwrap();
 
         let columns_n: u8 = first.len().try_into().map_err(|_| Error::TooManyColumns)?;
@@ -259,7 +259,7 @@ impl Table {
 
         let mut writer = csv::Writer::from_writer(writer);
 
-        let first = self.rows.first().unwrap(); // SAFETY checked earlier
+        let first = self.rows.first().unwrap(); // PANIC checked earlier
 
         if with_names {
             let column_names = first.iter().enumerate().map(|(i, _)| format!("col-{}", i));
@@ -276,7 +276,7 @@ impl Table {
             writer.write_record(stringified)?;
         }
 
-        // SAFETY should not panic, unless second flush somehow fails
+        // PANIC should not panic, unless second flush somehow fails
         writer.flush()?;
         let writer = writer.into_inner().unwrap();
         Ok(writer)

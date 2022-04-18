@@ -22,7 +22,7 @@ pub fn parse(contents: &str) -> Result<TableDefinitions, Error> {
         let mut line = line.split(';');
         let id = line
             .next()
-            .unwrap() // SAFETY split on string always returns at least one item
+            .unwrap() // PANIC split on string always returns at least one item
             .parse()
             .map_err(Error::InvalidTableId)?;
         let name = line.next().ok_or(Error::NoTableName)?.to_owned();
