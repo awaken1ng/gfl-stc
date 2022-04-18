@@ -25,7 +25,7 @@ impl NamedTable {
 
         let mut id_to_index = IndexMap::new();
         for (row_index, row) in table.rows.iter().enumerate() {
-            let row_id = row.get(0).map(Value::as_i32).flatten().ok_or(Error::ColumnNotFound)?;
+            let row_id = row.get(0).and_then(Value::as_i32).ok_or(Error::ColumnNotFound)?;
             id_to_index.insert(row_id, row_index);
         }
 

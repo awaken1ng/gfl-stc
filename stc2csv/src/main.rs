@@ -51,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             continue;
         }
 
-        match path.extension().map(OsStr::to_str).flatten() {
+        match path.extension().and_then(OsStr::to_str) {
             Some("stc") => stc_to_csv(&path, &defs),
             _ => continue,
         }
@@ -101,7 +101,7 @@ where
     for row in table.rows.iter_mut() {
         for col in row.iter_mut() {
             if let stc::Value::String(string) = col {
-                let escaped = string.replace("\r", "\\r").replace("\n", "\\n");
+                let escaped = string.replace('\r', "\\r").replace('\n', "\\n");
                 *string = escaped;
             }
         }

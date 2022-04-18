@@ -329,8 +329,8 @@ impl Table {
                 .split(pair_separator)
                 .map(|i| {
                     let mut split = i.split(kv_separator);
-                    let k: Option<K> = split.next().map(|k| k.parse().ok()).flatten();
-                    let v: Option<V> = split.next().map(|v| v.parse().ok()).flatten();
+                    let k: Option<K> = split.next().and_then(|k| k.parse().ok());
+                    let v: Option<V> = split.next().and_then(|v| v.parse().ok());
                     k.zip(v)
                 })
                 .collect::<Option<_>>()
