@@ -48,7 +48,13 @@ pub enum Error {
 
     ColumnNotFound,
 
-    ValueConversionFailed,
+    ValueConversionFailed {
+        table_id: u16,
+        /// 0-based row index
+        row: usize,
+        /// 0-based colum index
+        column: usize,
+    },
 
     InvalidColumnType,
 

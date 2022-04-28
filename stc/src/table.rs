@@ -188,54 +188,54 @@ impl Table {
             id,
             rows: Vec::new(),
         };
-        for record in reader.records() {
+        for (row_i, record) in reader.records().enumerate() {
             let row = record?;
             let row: Result<Vec<Value>, _> = row
                 .iter()
                 .enumerate()
-                .map(|(i, col)| {
-                    let col_type = types.get(i).ok_or(Error::InconsistentNamesAndTypesLength)?;
+                .map(|(col_i, col)| {
+                    let col_type = types.get(col_i).ok_or(Error::InconsistentNamesAndTypesLength)?;
                     match col_type.deref() {
                         "i8" => col
                             .parse()
                             .map(Value::U8)
-                            .map_err(|_| Error::ValueConversionFailed),
+                            .map_err(|_| Error::ValueConversionFailed { table_id: id, row: row_i, column: col_i }),
                         "u8" => col
                             .parse()
                             .map(Value::U8)
-                            .map_err(|_| Error::ValueConversionFailed),
+                            .map_err(|_| Error::ValueConversionFailed { table_id: id, row: row_i, column: col_i }),
                         "i16" => col
                             .parse()
                             .map(Value::I16)
-                            .map_err(|_| Error::ValueConversionFailed),
+                            .map_err(|_| Error::ValueConversionFailed { table_id: id, row: row_i, column: col_i }),
                         "u16" => col
                             .parse()
                             .map(Value::U16)
-                            .map_err(|_| Error::ValueConversionFailed),
+                            .map_err(|_| Error::ValueConversionFailed { table_id: id, row: row_i, column: col_i }),
                         "i32" => col
                             .parse()
                             .map(Value::I32)
-                            .map_err(|_| Error::ValueConversionFailed),
+                            .map_err(|_| Error::ValueConversionFailed { table_id: id, row: row_i, column: col_i }),
                         "u32" => col
                             .parse()
                             .map(Value::U32)
-                            .map_err(|_| Error::ValueConversionFailed),
+                            .map_err(|_| Error::ValueConversionFailed { table_id: id, row: row_i, column: col_i }),
                         "i64" => col
                             .parse()
                             .map(Value::I64)
-                            .map_err(|_| Error::ValueConversionFailed),
+                            .map_err(|_| Error::ValueConversionFailed { table_id: id, row: row_i, column: col_i }),
                         "u64" => col
                             .parse()
                             .map(Value::U64)
-                            .map_err(|_| Error::ValueConversionFailed),
+                            .map_err(|_| Error::ValueConversionFailed { table_id: id, row: row_i, column: col_i }),
                         "f32" => col
                             .parse()
                             .map(Value::F32)
-                            .map_err(|_| Error::ValueConversionFailed),
+                            .map_err(|_| Error::ValueConversionFailed { table_id: id, row: row_i, column: col_i }),
                         "f64" => col
                             .parse()
                             .map(Value::F64)
-                            .map_err(|_| Error::ValueConversionFailed),
+                            .map_err(|_| Error::ValueConversionFailed { table_id: id, row: row_i, column: col_i }),
                         "string" => Ok(Value::String(col.to_owned())),
                         _ => Err(Error::InvalidColumnType),
                     }
@@ -282,38 +282,38 @@ impl Table {
         Ok(writer)
     }
 
-    pub fn value<'a, T>(&'a self, row: usize, column: usize) -> Result<T, Error>
+    pub fn value<'a, T>(&'a self, row_i: usize, column_i: usize) -> Result<T, Error>
     where
         T: TryFrom<&'a Value>,
     {
-        let row = self.rows.get(row).ok_or(Error::RowNotFound)?;
-        let column = row.get(column).ok_or(Error::ColumnNotFound)?;
+        let row = self.rows.get(row_i).ok_or(Error::RowNotFound)?;
+        let column = row.get(column_i).ok_or(Error::ColumnNotFound)?;
 
-        T::try_from(column).map_err(|_| Error::ValueConversionFailed)
+        T::try_from(column).map_err(|_| Error::ValueConversionFailed { table_id: self.id, row: row_i, column: column_i })
     }
 
     /// Convert `"v,v,v"` string into `Vec<T>`
-    pub fn vector<T>(&self, row: usize, column: usize, separator: &str) -> Result<Vec<T>, Error>
+    pub fn vector<T>(&self, row_i: usize, column_i: usize, separator: &str) -> Result<Vec<T>, Error>
     where
         T: FromStr,
     {
-        let row = self.rows.get(row).ok_or(Error::RowNotFound)?;
-        let column = row.get(column).ok_or(Error::ColumnNotFound)?;
+        let row = self.rows.get(row_i).ok_or(Error::RowNotFound)?;
+        let column = row.get(column_i).ok_or(Error::ColumnNotFound)?;
 
         match column {
             Value::String(string) => string
                 .split(separator)
                 .map(T::from_str)
                 .collect::<Result<Vec<T>, _>>()
-                .map_err(|_| Error::ValueConversionFailed),
+                .map_err(|_| Error::ValueConversionFailed { table_id: self.id, row: row_i, column: column_i }),
             _ => Err(Error::InvalidColumnType),
         }
     }
 
     pub fn map<K, V>(
         &self,
-        row: usize,
-        column: usize,
+        row_i: usize,
+        column_i: usize,
         pair_separator: &str,
         kv_separator: &str,
     ) -> Result<HashMap<K, V>, Error>
@@ -321,8 +321,8 @@ impl Table {
         K: FromStr + Eq + Hash,
         V: FromStr,
     {
-        let row = self.rows.get(row).ok_or(Error::RowNotFound)?;
-        let column = row.get(column).ok_or(Error::ColumnNotFound)?;
+        let row = self.rows.get(row_i).ok_or(Error::RowNotFound)?;
+        let column = row.get(column_i).ok_or(Error::ColumnNotFound)?;
 
         match column {
             Value::String(string) => string
@@ -334,7 +334,7 @@ impl Table {
                     k.zip(v)
                 })
                 .collect::<Option<_>>()
-                .ok_or(Error::ValueConversionFailed),
+                .ok_or(Error::ValueConversionFailed { table_id: self.id, row: row_i, column: column_i }),
             _ => Err(Error::InvalidColumnType),
         }
     }
@@ -396,7 +396,7 @@ fn getters() {
 
     assert!(matches!(
         table.value::<i32>(0, 1),
-        Err(Error::ValueConversionFailed)
+        Err(Error::ValueConversionFailed { table_id: 1, row: 0, column: 1})
     ));
     assert!(matches!(
         table.value::<String>(0, 1).as_deref(),
