@@ -198,7 +198,7 @@ impl Table {
                     match col_type.deref() {
                         "i8" => col
                             .parse()
-                            .map(Value::U8)
+                            .map(Value::I8)
                             .map_err(|_| Error::ValueConversionFailed { table_id: id, row: row_i, column: col_i }),
                         "u8" => col
                             .parse()
