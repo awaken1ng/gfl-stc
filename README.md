@@ -1,4 +1,4 @@
-Converts `.stc` tables into `.csv` files and splits `catchdata.dat` into `.json` files.
+Converts `.stc` tables into `.csv` files.
 
 # Data versioning
 During login sequence, game client queries `Index/version` endpoint to check if client is up-to-date.
